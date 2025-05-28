@@ -92,7 +92,7 @@
 					<Table.Row data-state={row.getIsSelected() && 'selected'}>
 						{#each row.getVisibleCells() as cell (cell.id)}
 							<Table.Cell>
-								<a href={`/record/${cell.column.columnDef.cell.id}`}>
+								<a href={`/meeting/${cell.getValue()}`}>
 									<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
 								</a>
 							</Table.Cell>

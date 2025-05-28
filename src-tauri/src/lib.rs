@@ -30,7 +30,7 @@ async fn get_meetings(app: AppHandle) -> Result<Vec<String>, String> {
             .await
             .map_err(|e| e.to_string())?;
         if ft.is_dir() {
-            folders.push(entry.path().to_string_lossy().into_owned());
+            folders.push(entry.file_name().to_string_lossy().into_owned());
         }
     }
     Ok(folders)
