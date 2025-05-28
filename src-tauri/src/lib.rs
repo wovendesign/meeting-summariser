@@ -1,6 +1,6 @@
 use tauri_plugin_fs::FsExt;
 use tokio::fs;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -11,10 +11,7 @@ fn greet(name: &str) -> String {
 #[tauri::command]
 async fn get_meetings(app: AppHandle) -> Result<Vec<String>, String> {
     // resolve <app>/uploads
-    let app_dir = app
-        .path_resolver()
-        .app_dir()
-        .ok_or("failed to resolve app dir")?;
+    let app_dir = app.path().app_local_data_dir().expect("Failed to get app local data directory");
     let uploads = app_dir.join("uploads");
 
     // read directory
@@ -33,10 +30,25 @@ async fn get_meetings(app: AppHandle) -> Result<Vec<String>, String> {
             .await
             .map_err(|e| e.to_string())?;
         if ft.is_dir() {
-            folders.push(entry.file_name().to_string_lossy().into_owned());
+            folders.push(entry.path().to_string_lossy().into_owned());
         }
     }
     Ok(folders)
+}
+
+#[tauri::command]
+async fn add_meeting(app: AppHandle, name: &str) -> Result<(), String> {
+    // resolve <app>/uploads
+    let app_dir = app.path().app_local_data_dir().expect("Failed to get app local data directory");
+    let uploads = app_dir.join("uploads");
+
+    // ensure uploads directory exists
+    fs::create_dir_all(&uploads).await.map_err(|e| e.to_string())?;
+
+    // create new meeting folder
+    let meeting_dir = uploads.join(name);
+    fs::create_dir(&meeting_dir).await.map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 
@@ -52,7 +64,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_meetings])
+        .invoke_handler(tauri::generate_handler![greet, get_meetings, add_meeting])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
