@@ -62,13 +62,9 @@
 		Transcriber
 	</h1>
 	<p>Record a meeting and get the meeting notes!</p>
-	<Recorder />
 
 	<a href="/record">New Recording</a>
 
-	<Button onclick={addMeeting}>Add Meeting</Button>
-
-	<p>Meetings:</p>
 
 <Table.Root>
 			<Table.Header>

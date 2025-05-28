@@ -20,6 +20,18 @@
 	let saveStatus = $state('');
 	let loadingSummary = $state(false);
 
+	let name = $state(`Meeting ${data.id}`);
+
+	let meetingMetadata: {
+		name?: string
+	} = $state({})
+
+	$effect(() => {
+		if (meetingMetadata.name) {
+			name = meetingMetadata.name;
+		}
+	});
+
 	let audio: ArrayBuffer | null = $state(null);
 	let audioURL = $derived.by(() => {
 		if (!audio) return '';
@@ -71,6 +83,7 @@
 		await getSummary();
 		await getAudio();
 		await getTranscriptJson();
+		await getMeetingMetadata();
 	})
 
 	async function getTranscript() {
@@ -108,13 +121,31 @@
 			audio = null;
 		}
 	}
+
+	async function getMeetingMetadata() {
+		try {
+			meetingMetadata = await invoke("get_meeting_metadata", { meetingId: data.id });
+		} catch (error) {
+			console.error("Error fetching meeting metadata:", error);
+			meetingMetadata = {};
+		}
+	}
+
+	async function generateMeetingName() {
+		try {
+			name = await invoke("generate_meeting_name", { meetingId: data.id });
+			console.log(name)
+
+		} catch (error) {
+			console.error("Error generating meeting name:", error);
+		}
+	}
 </script>
 
 <div class="container flex flex-col gap-4 p-4">
 	<Button variant="ghost" href="/" class="self-start">Back</Button>
-	<h1 class="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-		Recording {data.id}
-	</h1>
+	<Button onclick={generateMeetingName} class="self-start">Generate New Meeting Name</Button>
+	<h2 class="text-2xl font-bold">{name}</h2>
 	<audio src={audioURL} controls></audio>
 
 	<section>
