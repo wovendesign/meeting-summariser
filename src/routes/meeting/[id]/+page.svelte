@@ -2,22 +2,6 @@
 	import SpeakerNaming from '$lib/components/SpeakerNaming.svelte';
 	import Clipboard from '@lucide/svelte/icons/clipboard';
 
-	// const {
-	// 	id,
-	// 	jsonPath,
-	// 	txtPath,
-	// 	webmUrl,
-	// 	transcript,
-	// 	summary
-	// }: {
-	// 	id: string;
-	// 	jsonPath: string;
-	// 	txtPath: string;
-	// 	webmUrl: string;
-	// 	transcript: string;
-	// 	summary: string;
-	// } = $props();
-
 	let { data }: PageProps = $props();
 
 
@@ -27,11 +11,21 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { onMount } from 'svelte'
+	import { invoke } from '@tauri-apps/api/core'
+
 	let transcriptContent = $state("");
-	let summaryContent = $state("");
+	let transcriptJsonContent: string | null = $state(null);
+	let summaryContent: string | null = $state("");
 	let savingTranscript = $state(false);
 	let saveStatus = $state('');
 	let loadingSummary = $state(false);
+
+	let audio: ArrayBuffer | null = $state(null);
+	let audioURL = $derived.by(() => {
+		if (!audio) return '';
+		const blob = new Blob([audio], { type: 'audio/wav' });
+		return URL.createObjectURL(blob);
+	});
 
 	async function saveTranscript() {
 		// savingTranscript = true;
@@ -73,15 +67,55 @@
 	});
 
 	onMount(async () => {
-
+		await getTranscript();
+		await getSummary();
+		await getAudio();
+		await getTranscriptJson();
 	})
+
+	async function getTranscript() {
+		try {
+			transcriptContent = await invoke("get_meeting_transcript", { meetingId: data.id })
+		} catch (error) {
+			console.error("Error fetching transcript:", error);
+			transcriptContent = "Error fetching transcript";
+		}
+	}
+
+	async function getTranscriptJson() {
+		try {
+			transcriptJsonContent = await invoke("get_meeting_transcript_json", { meetingId: data.id })
+		} catch (error) {
+			console.error("Error fetching transcript:", error);
+			transcriptJsonContent = null;
+		}
+	}
+
+	async function getSummary() {
+		try {
+			summaryContent = await invoke("get_meeting_summary", { meetingId: data.id })
+		} catch (error) {
+			console.error("Error fetching summary:", error);
+			summaryContent = null;
+		}
+	}
+
+	async function getAudio() {
+		try {
+			audio = await invoke("get_meeting_audio", { meetingId: data.id });
+		} catch (error) {
+			console.error("Error fetching audio:", error);
+			audio = null;
+		}
+	}
 </script>
 
 <div class="container flex flex-col gap-4 p-4">
+	<Button variant="ghost" href="/" class="self-start">Back</Button>
 	<h1 class="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
 		Recording {data.id}
 	</h1>
-	<!-- <audio src={data.webmUrl} controls></audio> -->
+	<audio src={audioURL} controls></audio>
 
 	<section>
 		{#if saveStatus}
@@ -104,7 +138,7 @@
 	</section>
 
 	<section>
-		<!-- <SpeakerNaming audioURL={data.webmUrl} jsonPath={data.jsonPath} /> -->
+		<SpeakerNaming audioURL={audioURL} json={transcriptJsonContent} />
 	</section>
 
 	<section>

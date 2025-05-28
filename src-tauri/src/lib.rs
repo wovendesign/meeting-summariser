@@ -1,6 +1,7 @@
 use tauri_plugin_fs::FsExt;
 use tokio::fs;
 use tauri::{AppHandle, Manager};
+use tauri::ipc::Response;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -51,6 +52,74 @@ async fn add_meeting(app: AppHandle, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn get_meeting_transcript(app: AppHandle, meeting_id: &str) -> Result<String, String> {
+    // resolve <app>/uploads/<name>/transcript.txt
+    let app_dir = app.path().app_local_data_dir().expect("Failed to get app local data directory");
+    let base_dir = app_dir.join("uploads").join(meeting_id);
+    let file_name = format!("{}.txt", meeting_id);
+    let transcript_path = base_dir.join(file_name);
+
+    // read transcript file
+    fs::read_to_string(transcript_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_meeting_transcript_json(app: AppHandle, meeting_id: &str) -> Result<String, String> {
+    // resolve <app>/uploads/<name>/transcript.txt
+    let app_dir = app.path().app_local_data_dir().expect("Failed to get app local data directory");
+    let base_dir = app_dir.join("uploads").join(meeting_id);
+    let file_name = format!("{}.json", meeting_id);
+    let transcript_path = base_dir.join(file_name);
+
+    // read transcript file
+    fs::read_to_string(transcript_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
+    // resolve <app>/uploads/<name>/summary.md
+    let app_dir = app.path().app_local_data_dir().expect("Failed to get app local data directory");
+    let base_dir = app_dir.join("uploads").join(meeting_id);
+    let summary_path = base_dir.join("summary.md");
+
+    // read summary file
+    fs::read_to_string(summary_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+struct MeetingData {
+    id: String,
+    name: String,
+    transcript: String,
+    summary: String,
+    audio: String,
+}
+
+
+#[tauri::command]
+async fn get_meeting_audio(app: AppHandle, meeting_id: &str) -> Result<Response, String> {
+    let app_dir = app.path().app_local_data_dir().expect("Failed to get app local data directory");
+    let base_dir = app_dir.join("uploads").join(meeting_id);
+    let file_name = format!("{}.webm", meeting_id);
+    let audio_path = base_dir.join(file_name);
+
+    let data = fs::read(audio_path);
+    match data.await {
+        Ok(audio_data) => {
+            // Create a response with the audio data
+            let response = Response::new(audio_data);
+            return Ok(response);
+        },
+        Err(e) => return Err(e.to_string()),
+    }
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -64,7 +133,15 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_meetings, add_meeting])
+        .invoke_handler(tauri::generate_handler![
+            greet, 
+            get_meetings, 
+            add_meeting,
+            get_meeting_transcript,
+            get_meeting_summary,
+            get_meeting_audio,
+            get_meeting_transcript_json
+            ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

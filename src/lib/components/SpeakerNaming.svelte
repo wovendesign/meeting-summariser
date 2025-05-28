@@ -4,14 +4,14 @@
 	import Play from '@lucide/svelte/icons/play';
 	import Pause from '@lucide/svelte/icons/pause';
 	import { Input } from '$lib/components/ui/input';
-	import { onMount } from 'svelte';
+	import { onMount } from 'svelte'
 
 	const {
 		audioURL,
-		jsonPath
+		json
 	}: {
 		audioURL: string;
-		jsonPath: string;
+		json: string | null;
 	} = $props();
 	interface Segment {
 		start: number;
@@ -19,9 +19,8 @@
 		speaker: string;
 	}
 
-	let segments: Segment[] = [];
-	let speakers: string[] = $state([]);
-	let speakerNames: Record<string, string> = {};
+
+	let speakerNames: Record<string, string> = $state({});
 	let audioElem!: HTMLAudioElement;
 	let playQueue: Segment[] = [];
 	let queueIndex = 0;
@@ -29,15 +28,28 @@
 	let saveStatus = '';
 	let currentlyPlayingSpeaker: string | null = $state(null);
 
-	onMount(async () => {
-		const res = await fetch(`/api/segments?filepath=${encodeURIComponent(jsonPath)}`);
-		const data = await res.json();
-		segments = data.segments;
-		// collect unique speaker IDs
-		const set = new Set<string>(segments.map((s: Segment) => s.speaker));
-		speakers = Array.from(set);
-		speakers.forEach((id) => (speakerNames[id] = id));
+
+	let segments: Segment[] = $derived.by(() => {
+		if (!json) return [];
+		const data = JSON.parse(json);
+		return data.segments || [];
 	});
+
+	// let speakers: string[] = $state([]);
+	let speakers: string[] = $derived.by(() => {
+		if (!segments) return [];
+		const set = new Set<string>(segments.map((s: Segment) => s.speaker));
+		return Array.from(set);
+	});
+
+	$effect(() => {
+		speakers.forEach((id) => {
+			if (!speakerNames[id]) {
+				speakerNames[id] = id; // Initialize with speaker ID
+			}
+		});
+	})
+
 
 	function playSpeaker(id: string) {
 		if (currentlyPlayingSpeaker === id) {
@@ -67,20 +79,20 @@
 	}
 
 	async function saveNames() {
-		saving = true;
-		saveStatus = '';
-		try {
-			const res = await fetch('/api/segments/update', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ jsonPath, speakerNames })
-			});
-			saveStatus = res.ok ? 'Speaker names saved' : `Save failed: ${res.statusText}`;
-		} catch (err) {
-			saveStatus = `Error: ${err instanceof Error ? err.message : err}`;
-		} finally {
-			saving = false;
-		}
+		// saving = true;
+		// saveStatus = '';
+		// try {
+		// 	const res = await fetch('/api/segments/update', {
+		// 		method: 'POST',
+		// 		headers: { 'Content-Type': 'application/json' },
+		// 		body: JSON.stringify({ jsonPath, speakerNames })
+		// 	});
+		// 	saveStatus = res.ok ? 'Speaker names saved' : `Save failed: ${res.statusText}`;
+		// } catch (err) {
+		// 	saveStatus = `Error: ${err instanceof Error ? err.message : err}`;
+		// } finally {
+		// 	saving = false;
+		// }
 	}
 </script>
 
