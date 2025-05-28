@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import SpeakerNaming from '../components/SpeakerNaming.svelte';
+	import { writeFile, BaseDirectory, mkdir } from '@tauri-apps/plugin-fs';
 
 	// State runes
 	let mediaRecorder = $state<MediaRecorder | null>(null);
@@ -131,24 +132,21 @@
 			isUploading = true;
 			uploadStatus = 'Uploading recording to server...';
 
-			const response = await fetch('/api/upload', {
-				method: 'POST',
-				body: blob,
-				headers: {
-					'Content-Type': 'audio/webm'
-				}
+			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+			const recordingName = `recording-${timestamp}`;
+
+			const contents = new Uint8Array(await blob.arrayBuffer());
+
+			// Make Dir
+			await mkdir(`uploads/${recordingName}`, {
+				baseDir: BaseDirectory.AppLocalData,
 			});
 
-			const result = await response.json();
+			// Write File
+			await writeFile(`uploads/${recordingName}/${recordingName}.webm`, contents, {
+				baseDir: BaseDirectory.AppLocalData,
+			});
 
-			if (result.success) {
-				uploadStatus = result.message;
-				serverFilePath = result.filepath;
-				// Start transcription once file is saved
-				startTranscription(result.filepath);
-			} else {
-				uploadStatus = `Upload failed: ${result.error}`;
-			}
 		} catch (error) {
 			uploadStatus = `Error uploading: ${error instanceof Error ? error.message : 'Unknown error'}`;
 			console.error('Upload error:', error);

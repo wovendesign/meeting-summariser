@@ -1,7 +1,6 @@
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
 use serde::{Deserialize, Serialize};
-use serde_json;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_fs::FsExt;
@@ -131,18 +130,6 @@ async fn get_meeting_metadata(app: AppHandle, meeting_id: &str) -> Result<Meetin
     serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
-#[derive(Serialize, Deserialize)]
-struct OllamaRequest {
-    model: String,
-    messages: Vec<OllamaMessage>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct OllamaMessage {
-    role: String,
-    content: String,
-}
-
 #[tauri::command]
 async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<String, String> {
     println!("Generating meeting name for {}", meeting_id);
@@ -156,19 +143,6 @@ async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<Strin
     match meeting_summary {
         Ok(summary) => {
             // Send Request to Ollama
-            let url = "http://localhost:11434/api/generate";
-
-            let request = OllamaRequest {
-                model: "llama3".to_string(),
-                messages: vec![OllamaMessage {
-                    role: "user".to_string(),
-                    content: format!(
-                        "Generate a meeting name for the following summary:\n{}",
-                        summary
-                    ),
-                }],
-            };
-
             let mut client = OpenAIClient::builder()
                 .with_endpoint("http://localhost:11434/v1")
                 .build()
@@ -238,35 +212,9 @@ async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<Strin
                     return Err("No content returned from Ollama".to_string());
                 }
             }
-
-            return Ok("Meeting Name".to_string());
-
-            // match res {
-            //     Ok(response) => {
-            //         println!("Response: {:?}", response);
-            //         println!("{:?}", response.status()); // e.g. 200
-            //         println!("{:?}", response.text().await); // e.g Ok("{ Content }")
-            //         return Ok(summary);
-            //     }
-            //     Err(e) => {
-            //         return Err(format!("Failed to get response from Ollama: {}", e));
-            //     }
-            // }
         }
-        Err(e) => {
-            return Err(format!("Failed to get meeting summary: {}", e));
-        }
+        Err(e) => Err(format!("Failed to get meeting summary: {}", e)),
     }
-
-    // let name = format!("Meeting {}", meeting_id);
-}
-
-struct MeetingData {
-    id: String,
-    name: String,
-    transcript: String,
-    summary: String,
-    audio: String,
 }
 
 #[tauri::command]

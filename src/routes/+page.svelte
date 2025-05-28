@@ -63,7 +63,7 @@
 	</h1>
 	<p>Record a meeting and get the meeting notes!</p>
 
-	<a href="/record">New Recording</a>
+	<Button href="/meeting">New Recording</Button>
 
 
 <Table.Root>
