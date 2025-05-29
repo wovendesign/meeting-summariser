@@ -187,18 +187,38 @@
       </DropdownMenu.Content>
     </DropdownMenu.Root>
   </div>
-  <audio src={audioURL} controls></audio>
-  <Button
-    onclick={async () => {
-      try {
-        await invoke("transcribe", { meetingId: data.id }).then(() => {
-          console.log("Transcription finished successfully");
-        });
-      } catch (err) {
-        console.error("Error transcribing audio:", err);
-      }
-    }}>Transcribe</Button
-  >
+
+  <Card.Root>
+    <Card.Header class="flex items-center justify-between">
+      <Card.Title>Recorded Meeting</Card.Title>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger
+          class={buttonVariants({ variant: "outline", size: "icon" })}
+        >
+          <Ellipsis />
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content class="w-56 mr-4">
+          <DropdownMenu.Item
+            onclick={async () => {
+              try {
+                await invoke("transcribe", { meetingId: data.id }).then(() => {
+                  console.log("Transcription finished successfully");
+                });
+              } catch (err) {
+                console.error("Error transcribing audio:", err);
+              }
+            }}
+          >
+            <RefreshCcw />
+            <span>Transcribe Audio</span>
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+    </Card.Header>
+    <Card.Content class="prose prose-invert">
+      <audio src={audioURL} controls class="w-full"></audio>
+    </Card.Content>
+  </Card.Root>
 
   <section>
     {#if saveStatus}
