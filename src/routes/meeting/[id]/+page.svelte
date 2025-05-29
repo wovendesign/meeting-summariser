@@ -163,7 +163,7 @@
 </script>
 
 <Toaster />
-<div class="flex flex-col gap-4 p-4">
+<div class="flex flex-col gap-4 p-8">
   <Button variant="outline" href="/" class="self-start">Back</Button>
   <div class="flex items-center justify-between">
     <h2 class={clsx("text-2xl font-bold", generatingName && "animate-pulse")}>
@@ -215,7 +215,7 @@
         </DropdownMenu.Content>
       </DropdownMenu.Root>
     </Card.Header>
-    <Card.Content class="prose prose-invert">
+    <Card.Content>
       <audio src={audioURL} controls class="w-full"></audio>
     </Card.Content>
   </Card.Root>
@@ -229,7 +229,7 @@
       <Card.Header>
         <Card.Title>Transcript</Card.Title>
       </Card.Header>
-      <Card.Content class="prose prose-invert">
+      <Card.Content>
         <Textarea
           bind:value={transcriptContent}
           placeholder="Edit the Transcript"
@@ -252,7 +252,7 @@
       <Card.Header>
         <Card.Title>Transcription Summary</Card.Title>
       </Card.Header>
-      <Card.Content class="prose prose-invert">
+      <Card.Content class="prose prose-invert mx-auto">
         {#if summaryContent}
           {@html markdownContent}
         {:else}

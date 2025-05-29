@@ -1,7 +1,7 @@
 <script lang="ts">
   // export let data: { recordings: string[] };
   const { data } = $props();
-  import Recorder from "$lib/components/Recorder.svelte";
+  import * as Card from "$lib/components/ui/card/index.js";
   import Settings from "@lucide/svelte/icons/settings";
   import { Button } from "$lib/components/ui/button/index.js";
   import { createSvelteTable } from "$lib/components/ui/data-table/data-table.svelte.js";
@@ -62,60 +62,79 @@
   });
 </script>
 
-<div class="flex gap-2 p-4 flex-col">
-  <div class="flex items-center justify-between">
-    <h1 class="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-      Transcriber
-    </h1>
-    <Button size="icon" variant="outline" href="/settings">
-      <span class="sr-only">Settings</span>
-      <Settings />
-    </Button>
-  </div>
-  <p>Record a meeting and get the meeting notes!</p>
+<div class="flex gap-8 p-8 flex-col">
+  <div class="flex flex-col items-start gap-2">
+    <div class="flex items-center justify-between w-full">
+      <h1
+        class="text-2xl font-bold leading-tight tracking-tighter sm:text-3xl md:text-4xl lg:leading-[1.1]"
+      >
+        Meeting Summariser
+      </h1>
+      <Button size="icon" variant="outline" href="/settings">
+        <span class="sr-only">Settings</span>
+        <Settings />
+      </Button>
+    </div>
 
-  <Button href="/meeting">New Recording</Button>
+    <p
+      class="text-foreground max-w-2xl text-balance text-base font-light sm:text-lg"
+    >
+      Record a meeting and get a summarisation with key points and action items.
+      All local, no cloud processing.
+    </p>
 
-  <div class="rounded-md border">
-    <Table.Root>
-      <Table.Header>
-        {#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
-          <Table.Row>
-            {#each headerGroup.headers as header (header.id)}
-              <Table.Head>
-                {#if !header.isPlaceholder}
-                  <FlexRender
-                    content={header.column.columnDef.header}
-                    context={header.getContext()}
-                  />
-                {/if}
-              </Table.Head>
-            {/each}
-          </Table.Row>
-        {/each}
-      </Table.Header>
-      <Table.Body>
-        {#each table.getRowModel().rows as row (row.id)}
-          <Table.Row data-state={row.getIsSelected() && "selected"}>
-            {#each row.getVisibleCells() as cell (cell.id)}
-              <Table.Cell>
-                <a href={`/meeting/${row.getValue("id")}`}>
-                  <FlexRender
-                    content={cell.column.columnDef.cell}
-                    context={cell.getContext()}
-                  />
-                </a>
-              </Table.Cell>
-            {/each}
-          </Table.Row>
-        {:else}
-          <Table.Row>
-            <Table.Cell colspan={columns.length} class="h-24 text-center"
-              >No results.</Table.Cell
-            >
-          </Table.Row>
-        {/each}
-      </Table.Body>
-    </Table.Root>
+    <div class="flex w-full items-center justify-start gap-2 pt-2">
+      <Button href="/meeting">New Recording</Button>
+    </div>
   </div>
+
+  <Card.Root>
+    <Card.Header>
+      <Card.Title>Meetings</Card.Title>
+    </Card.Header>
+    <Card.Content class="">
+      <div class="rounded-md border">
+        <Table.Root class="w-full">
+          <Table.Header>
+            {#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
+              <Table.Row>
+                {#each headerGroup.headers as header (header.id)}
+                  <Table.Head>
+                    {#if !header.isPlaceholder}
+                      <FlexRender
+                        content={header.column.columnDef.header}
+                        context={header.getContext()}
+                      />
+                    {/if}
+                  </Table.Head>
+                {/each}
+              </Table.Row>
+            {/each}
+          </Table.Header>
+          <Table.Body>
+            {#each table.getRowModel().rows as row (row.id)}
+              <Table.Row data-state={row.getIsSelected() && "selected"}>
+                {#each row.getVisibleCells() as cell (cell.id)}
+                  <Table.Cell>
+                    <a href={`/meeting/${row.getValue("id")}`}>
+                      <FlexRender
+                        content={cell.column.columnDef.cell}
+                        context={cell.getContext()}
+                      />
+                    </a>
+                  </Table.Cell>
+                {/each}
+              </Table.Row>
+            {:else}
+              <Table.Row>
+                <Table.Cell colspan={columns.length} class="h-24 text-center"
+                  >No results.</Table.Cell
+                >
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table.Root>
+      </div>
+    </Card.Content>
+  </Card.Root>
 </div>
