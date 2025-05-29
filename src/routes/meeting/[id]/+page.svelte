@@ -61,6 +61,7 @@
       summaryContent = await invoke("generate_summary", {
         meetingId: data.id,
       });
+      await getMeetingMetadata();
     } catch (error) {
       console.error("Error regenerating summary:", error);
       // Handle error appropriately, e.g., show a toast notification

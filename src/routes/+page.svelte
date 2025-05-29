@@ -14,7 +14,11 @@
   import { onMount } from "svelte";
   import { FlexRender } from "$lib/components/ui/data-table/index.js";
 
-  let meetings: string[] = $state([]);
+  let meetings: {
+    id: string;
+    name: string | null;
+    // Add other fields as necessary
+  }[] = $state([]);
 
   onMount(async () => {
     getMeetings();
@@ -23,17 +27,18 @@
   async function getMeetings() {
     try {
       meetings = await invoke("get_meetings");
+      console.log("Meetings fetched:", meetings);
     } catch (error) {
       console.error("Error fetching meetings:", error);
     }
   }
 
-  async function addMeeting() {
-    const newMeeting = await invoke("add_meeting", { name: "New Meeting" });
-    getMeetings();
-  }
-
   const columns: ColumnDef<{ id: string }, any>[] = [
+    {
+      accessorKey: "name",
+      header: "Meeting Name",
+      cell: (info) => info.getValue(),
+    },
     {
       accessorKey: "id",
       header: "Recording ID",
@@ -50,7 +55,7 @@
 
   const table = createSvelteTable({
     get data() {
-      return meetings.map((id) => ({ id }));
+      return meetings;
     },
     columns,
     getCoreRowModel: getCoreRowModel(),

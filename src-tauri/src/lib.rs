@@ -1,3 +1,4 @@
+use std::iter::Map;
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion::{self, ChatCompletionRequest};
 use serde::{Deserialize, Serialize};
@@ -15,8 +16,13 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[derive(Serialize, Deserialize)]
+struct MeetingMetadata {
+    id: String,
+    name: Option<String>,
+}
 #[tauri::command]
-async fn get_meetings(app: AppHandle) -> Result<Vec<String>, String> {
+async fn get_meetings(app: AppHandle) -> Result<Vec<MeetingMetadata>, String> {
     // resolve <app>/uploads
     let app_dir = app
         .path()
@@ -34,7 +40,16 @@ async fn get_meetings(app: AppHandle) -> Result<Vec<String>, String> {
             folders.push(entry.file_name().to_string_lossy().into_owned());
         }
     }
-    Ok(folders)
+
+    // fetch metadata for each folder
+    let mut meetings = Vec::new();
+    for id in folders {
+        let metadata = get_meeting_metadata(app.clone(), &id).await?;
+
+        meetings.push(metadata);
+    }
+
+    Ok(meetings)
 }
 
 #[tauri::command]
@@ -109,11 +124,6 @@ async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<String,
         .map_err(|e| e.to_string())
 }
 
-#[derive(Serialize, Deserialize)]
-struct MeetingMetadata {
-    name: String,
-}
-
 #[tauri::command]
 async fn get_meeting_metadata(app: AppHandle, meeting_id: &str) -> Result<MeetingMetadata, String> {
     // resolve <app>/uploads/<meeting_id>/meeting.json
@@ -129,8 +139,17 @@ async fn get_meeting_metadata(app: AppHandle, meeting_id: &str) -> Result<Meetin
     // read and parse JSON
     let content = fs::read_to_string(metadata_path)
         .await
-        .map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+
+    if let Ok(content) = content {
+        serde_json::from_str::<MeetingMetadata>(&content).map_err(|e| e.to_string())
+    } else {
+        Ok(MeetingMetadata {
+            id: meeting_id.to_string(),
+            name: None
+        })
+    }
+    // serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
 

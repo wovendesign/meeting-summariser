@@ -1,9 +1,9 @@
+use crate::{get_meeting_summary, get_meeting_transcript, MeetingMetadata};
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion;
 use openai_api_rs::v1::chat_completion::ChatCompletionRequest;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::fs;
-use crate::{get_meeting_summary, get_meeting_transcript, MeetingMetadata};
 
 #[tauri::command]
 pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
@@ -48,43 +48,22 @@ You are a helpful assistant who combines multiple structured meeting summaries i
         .map_err(|e| e.to_string())?;
     println!("Content: {:?}", result.choices[0].message.content);
     let content = result.choices[0].message.content.clone();
-    match content {
-        Some(summary) => {
-            // Add it to meeting.json if it exists
-            let app_dir = app
-                .path()
-                .app_local_data_dir()
-                .expect("Failed to get app local data directory");
-            let summary_path = app_dir
-                .join("uploads")
-                .join(meeting_id)
-                .join("summary.md");
+    if let Some(summary) = content {
+        // Add it to meeting.json if it exists
+        let app_dir = app
+            .path()
+            .app_local_data_dir()
+            .expect("Failed to get app local data directory");
+        let summary_path = app_dir.join("uploads").join(meeting_id).join("summary.md");
 
-            if !summary_path.exists() {
-                // Create file metadata.json
-                let metadata = MeetingMetadata {
-                    name: summary.to_string(),
-                };
-                let json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
-                fs::write(summary_path, json)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                return Ok(summary.to_string());
-            } else {
-                // If meeting.json does not exist, create it
-                let metadata = MeetingMetadata {
-                    name: summary.to_string(),
-                };
-                let json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
-                fs::write(summary_path, json)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                return Ok(summary.to_string());
-            }
-        }
-        None => {
-            return Err("No content returned from Ollama".to_string());
-        }
+        fs::write(summary_path, summary.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        generate_meeting_name(app.clone(), meeting_id).await?;
+        return Ok(summary.to_string());
+    } else {
+        return Err("No content returned from Ollama".to_string());
     }
 
     app.emit("summarization-finished", &meeting_id).unwrap();
@@ -149,7 +128,8 @@ pub async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<S
                     if !metadata_path.exists() {
                         // Create file metadata.json
                         let metadata = MeetingMetadata {
-                            name: name_str.to_string(),
+                            id: meeting_id.to_string(),
+                            name: Some(name_str.to_string()),
                         };
                         let json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
                         fs::write(metadata_path, json)
@@ -159,7 +139,8 @@ pub async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<S
                     } else {
                         // If meeting.json does not exist, create it
                         let metadata = MeetingMetadata {
-                            name: name_str.to_string(),
+                            id: meeting_id.to_string(),
+                            name: Some(name_str.to_string()),
                         };
                         let json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
                         fs::write(metadata_path, json)
