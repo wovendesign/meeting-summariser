@@ -14,7 +14,14 @@
       {
         "title": "Meeting Summariser",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "theme": "Dark",
+        "titleBarStyle": "Transparent",
+        "backgroundColor": {
+          "red": 245,
+          "green": 245,
+          "blue": 245
+        }
       }
     ],
     "security": {
