@@ -280,7 +280,7 @@ pub fn run() {
             get_meeting_metadata,
             generate_meeting_name,
             whisperx::check_python_installation,
-            whisperx::install_python,
+            whisperx::check_whisperx_installation,
             whisperx::transcribe
         ])
         .run(tauri::generate_context!())

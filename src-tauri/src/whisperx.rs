@@ -1,83 +1,72 @@
 use tauri::{AppHandle, Manager};
 use tokio::fs;
 use tokio::process::Command;
-use kalosm::sound::*;
-use kalosm::sound::dasp::sample::ToSample;
 
 #[tauri::command]
-pub async fn check_python_installation(app: AppHandle) -> Result<(), String> {
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let python_dir = app_dir.join("python");
-
-    if fs::try_exists(&python_dir).await.map_err(|e| e.to_string())? {
-        // Check version
-        let python_exe = if cfg!(target_os = "windows") {
-            python_dir.join("python.exe")
-        } else {
-            python_dir.join("bin/python")
-        };
-        if !fs::try_exists(&python_exe).await.map_err(|e| e.to_string())? {
-            return Err("Python executable not found".to_string());
-        }
-        let output = Command::new(python_exe)
-            .arg("--version")
-            .output()
-            .await
-            .map_err(|e| e.to_string())?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Python version check failed: {}", stderr));
-        }
-        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        println!("Python version: {}", version);
-
-        return Ok(());
-    }
-
-    //    Return error
-    Err("Python installation check is not implemented yet.".to_string())
-}
-
-#[tauri::command]
-pub async fn install_python(app: AppHandle) -> Result<(), String> {
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-
-    let python_dir = app_dir.join("python");
-
-    fs::create_dir_all(&python_dir)
+pub async  fn check_python_installation() -> Result<(), String> {
+    let output = Command::new("python3")
+        .arg("--version")
+        .output()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Failed to execute python3: {}", e))?;
 
-    return Ok(());
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("python3 not found or returned error: {}", stderr.trim()))
+    }
 }
+
+#[tauri::command]
+pub async fn check_whisperx_installation() -> Result<(), String> {
+    check_python_installation().await?;
+
+    let output = Command::new("whisperx")
+        .arg("--version")
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute whisperx: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("whisperx not found or returned error: {}", stderr.trim()))
+    }
+}
+
 
 #[tauri::command(async)]
-pub  async fn transcribe(app: AppHandle) -> Result<(), String> {
-    let model = Whisper::builder()
-        .build_with_loading_handler(|progress| match &progress {
-            ModelLoadingProgress::Downloading {
-                source,
-                progress: file_loading_progress,
-            } => {
-                let progress = (progress.progress() * 100.0) as u32;
-                let elapsed = file_loading_progress.start_time.elapsed().as_secs_f32();
-                println!("Downloading file {source} {progress}% ({elapsed}s)");
-            }
-            ModelLoadingProgress::Loading { progress } => {
-                let progress = (progress * 100.0) as u32;
-                println!("Loading model {progress}%");
-            }
-        })
-        .await.map_err(|e| e.to_string())?;
+pub  async fn transcribe(app: AppHandle, meeting_id: &str) -> Result<(), String> {
+    check_whisperx_installation().await?;
 
-    // Stream audio from the microphone
-    let mic = MicInput::default();
-    let stream = mic.stream();
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let base_dir = app_dir.join("uploads").join(meeting_id);
+    let file_name = format!("{}.webm", meeting_id);
+    let audio_path = base_dir.join(file_name);
 
-    // Transcribe the audio.
-    let mut transcribed = stream.transcribe(model);
+    // whisperx '${filepath}' --compute_type int8 --diarize --output_dir '${outDir}'
 
-    // As the model transcribes the audio, print the text to the console.
-    transcribed.to_std_out().await.map_err(|e| e.to_string())?;
-    return Ok(());
+    let output = Command::new("uvx")
+        .arg("whisperx")
+        .arg(&audio_path)
+        .arg("--compute_type")
+        .arg("int8")
+        .arg("--diarize")
+        .arg("--output_dir")
+        .arg(&base_dir)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute whisperx: {}", e))?;
+
+    if output.status.success() {
+        return Ok(())
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(format!("whisperx not found or returned error: {}", stderr.trim()))
 }
