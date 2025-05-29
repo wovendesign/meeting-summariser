@@ -143,7 +143,7 @@
 </script>
 
 <div class="container flex flex-col gap-4 p-4">
-	<Button variant="ghost" href="/" class="self-start">Back</Button>
+	<Button variant="outline" href="/" class="self-start">Back</Button>
 	<Button onclick={generateMeetingName} class="self-start">Generate New Meeting Name</Button>
 	<h2 class="text-2xl font-bold">{name}</h2>
 	<audio src={audioURL} controls></audio>

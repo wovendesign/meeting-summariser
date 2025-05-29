@@ -6,6 +6,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 use tokio::fs;
 
+mod whisperx;
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -277,6 +279,9 @@ pub fn run() {
             get_meeting_transcript_json,
             get_meeting_metadata,
             generate_meeting_name,
+            whisperx::check_python_installation,
+            whisperx::install_python,
+            whisperx::transcribe
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

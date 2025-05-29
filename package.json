@@ -19,6 +19,7 @@
     "@tauri-apps/plugin-opener": "^2",
     "marked": "^15.0.12",
     "openai": "^4.103.0",
+    "svelte-sonner": "^1.0.3",
     "tailwind-variants": "^1.0.0"
   },
   "devDependencies": {
