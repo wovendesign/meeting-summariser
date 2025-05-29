@@ -11,6 +11,7 @@
   import { Textarea } from "$lib/components/ui/textarea";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { toast, Toaster } from "svelte-sonner";
 
   let transcriptContent = $state("");
   let transcriptJsonContent: string | null = $state(null);
@@ -56,6 +57,17 @@
   }
 
   async function regenerateSummary() {
+    try {
+      summaryContent = await invoke("generate_summary", {
+        meetingId: data.id,
+      });
+    } catch (error) {
+      console.error("Error regenerating summary:", error);
+      // Handle error appropriately, e.g., show a toast notification
+      toast.error("Error regenerating summary: " + error);
+      saveStatus = "Error regenerating summary";
+      return;
+    }
     // loadingSummary = true;
     // try {
     // 	const res = await fetch(`/api/summarize?filepath=${encodeURIComponent(data.txtPath)}`);
@@ -148,6 +160,7 @@
   }
 </script>
 
+<Toaster />
 <div class="container flex flex-col gap-4 p-4">
   <Button variant="outline" href="/" class="self-start">Back</Button>
   <Button onclick={generateMeetingName} class="self-start"

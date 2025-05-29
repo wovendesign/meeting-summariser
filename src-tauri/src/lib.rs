@@ -7,6 +7,7 @@ use tauri_plugin_fs::FsExt;
 use tokio::fs;
 
 mod whisperx;
+mod llm;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -132,92 +133,6 @@ async fn get_meeting_metadata(app: AppHandle, meeting_id: &str) -> Result<Meetin
     serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<String, String> {
-    println!("Generating meeting name for {}", meeting_id);
-    // notify frontend that generation has started
-    app.emit("meeting-name-generation-started", meeting_id)
-        .unwrap();
-
-    // Get Meeting Summary
-    let meeting_summary = get_meeting_summary(app.clone(), meeting_id).await;
-
-    match meeting_summary {
-        Ok(summary) => {
-            // Send Request to Ollama
-            let mut client = OpenAIClient::builder()
-                .with_endpoint("http://localhost:11434/v1")
-                .build()
-                .map_err(|e| e.to_string())?;
-
-            let req = ChatCompletionRequest::new(
-                "llama3".to_string(),
-                vec![
-                    chat_completion::ChatCompletionMessage {
-                    role: chat_completion::MessageRole::system,
-                    content: chat_completion::Content::Text(String::from("You are a meeting summarization assistant. generate a concise and relevant meeting name based on the provided summary. In front of the meeting name, add a fitting emoji. The name is supposed to be short (max 6 words), concise and relevant to the meeting summary.")),
-                    name: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                    },
-                    chat_completion::ChatCompletionMessage {
-                    role: chat_completion::MessageRole::user,
-                    content: chat_completion::Content::Text(summary),
-                    name: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                }
-                ],
-            );
-
-            let result = client
-                .chat_completion(req)
-                .await
-                .map_err(|e| e.to_string())?;
-            println!("Content: {:?}", result.choices[0].message.content);
-            let content = result.choices[0].message.content.clone();
-            match content {
-                Some(name_str) => {
-                    // Add it to meeting.json if it exists
-                    let app_dir = app
-                        .path()
-                        .app_local_data_dir()
-                        .expect("Failed to get app local data directory");
-                    let metadata_path = app_dir
-                        .join("uploads")
-                        .join(meeting_id)
-                        .join("meeting.json");
-
-                    if !metadata_path.exists() {
-                        // Create file metadata.json
-                        let metadata = MeetingMetadata {
-                            name: name_str.to_string(),
-                        };
-                        let json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
-                        fs::write(metadata_path, json)
-                            .await
-                            .map_err(|e| e.to_string())?;
-                        return Ok(name_str.to_string());
-                    } else {
-                        // If meeting.json does not exist, create it
-                        let metadata = MeetingMetadata {
-                            name: name_str.to_string(),
-                        };
-                        let json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
-                        fs::write(metadata_path, json)
-                            .await
-                            .map_err(|e| e.to_string())?;
-                        return Ok(name_str.to_string());
-                    }
-                }
-                None => {
-                    return Err("No content returned from Ollama".to_string());
-                }
-            }
-        }
-        Err(e) => Err(format!("Failed to get meeting summary: {}", e)),
-    }
-}
 
 #[tauri::command]
 async fn get_meeting_audio(app: AppHandle, meeting_id: &str) -> Result<Response, String> {
@@ -240,22 +155,7 @@ async fn get_meeting_audio(app: AppHandle, meeting_id: &str) -> Result<Response,
     }
 }
 
-#[tauri::command]
-async fn start_generate_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
-    // This function is a placeholder for generating a summary
-    // In a real application, you would implement the logic to generate a summary here
-    let summary = format!("Summary for meeting {}", meeting_id);
-    Ok(summary)
-}
 
-#[tauri::command]
-fn generate_summary(app: AppHandle, meeting_id: &str) {
-    app.emit("summarization-started", &meeting_id).unwrap();
-    for progress in [1, 15, 50, 80, 100] {
-        app.emit("summarization-progress", progress).unwrap();
-    }
-    app.emit("summarization-finished", &meeting_id).unwrap();
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -278,7 +178,8 @@ pub fn run() {
             get_meeting_audio,
             get_meeting_transcript_json,
             get_meeting_metadata,
-            generate_meeting_name,
+            llm::generate_meeting_name,
+            llm::generate_summary,
             whisperx::check_python_installation,
             whisperx::check_whisperx_installation,
             whisperx::transcribe
