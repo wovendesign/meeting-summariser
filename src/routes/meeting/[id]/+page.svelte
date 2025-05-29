@@ -7,11 +7,18 @@
   import { marked } from "marked";
   import type { PageProps } from "./$types";
   import * as Card from "$lib/components/ui/card/index.js";
-  import Button from "$lib/components/ui/button/button.svelte";
+  import Button, {
+    buttonVariants,
+  } from "$lib/components/ui/button/button.svelte";
   import { Textarea } from "$lib/components/ui/textarea";
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { toast, Toaster } from "svelte-sonner";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import RefreshCcw from "@lucide/svelte/icons/refresh-ccw";
+  import Ellipsis from "@lucide/svelte/icons/ellipsis";
+  import Pen from "@lucide/svelte/icons/pen";
+  import clsx from "clsx";
 
   let transcriptContent = $state("");
   let transcriptJsonContent: string | null = $state(null);
@@ -21,6 +28,7 @@
   let loadingSummary = $state(false);
 
   let name = $state(`Meeting ${data.id}`);
+  let generatingName = $state(false);
 
   let meetingMetadata: {
     name?: string;
@@ -69,16 +77,6 @@
       saveStatus = "Error regenerating summary";
       return;
     }
-    // loadingSummary = true;
-    // try {
-    // 	const res = await fetch(`/api/summarize?filepath=${encodeURIComponent(data.txtPath)}`);
-    // 	const json = await res.json();
-    // 	summaryContent = json.summary;
-    // } catch (err) {
-    // 	console.error('Error regenerating summary:', err);
-    // } finally {
-    // 	loadingSummary = false;
-    // }
   }
 
   const markdownContent = $derived.by(() => {
@@ -152,22 +150,43 @@
   }
 
   async function generateMeetingName() {
+    generatingName = true;
     try {
       name = await invoke("generate_meeting_name", { meetingId: data.id });
       console.log(name);
+      generatingName = false;
     } catch (error) {
-      console.error("Error generating meeting name:", error);
+      toast.error("Error generating meeting name: " + error);
+      generatingName = false;
     }
   }
 </script>
 
 <Toaster />
-<div class="container flex flex-col gap-4 p-4">
+<div class="flex flex-col gap-4 p-4">
   <Button variant="outline" href="/" class="self-start">Back</Button>
-  <Button onclick={generateMeetingName} class="self-start"
-    >Generate New Meeting Name</Button
-  >
-  <h2 class="text-2xl font-bold">{name}</h2>
+  <div class="flex items-center justify-between">
+    <h2 class={clsx("text-2xl font-bold", generatingName && "animate-pulse")}>
+      {name}
+    </h2>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger
+        class={buttonVariants({ variant: "outline", size: "icon" })}
+      >
+        <Ellipsis />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content class="w-56 mr-4">
+        <DropdownMenu.Item onclick={generateMeetingName}>
+          <Pen />
+          <span>Rename Meeting</span>
+        </DropdownMenu.Item>
+        <DropdownMenu.Item onclick={generateMeetingName}>
+          <RefreshCcw />
+          <span>Re-Generate Name</span>
+        </DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  </div>
   <audio src={audioURL} controls></audio>
   <Button
     onclick={async () => {
