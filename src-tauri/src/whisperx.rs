@@ -1,5 +1,4 @@
 use tauri::{AppHandle, Manager};
-use tokio::fs;
 use tokio::process::Command;
 
 #[tauri::command]

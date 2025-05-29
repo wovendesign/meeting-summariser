@@ -62,7 +62,7 @@
   });
 </script>
 
-<div class="contianer p-4">
+<div class="flex gap-2 p-4 flex-col">
   <div class="flex items-center justify-between">
     <h1 class="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
       Transcriber
@@ -76,44 +76,46 @@
 
   <Button href="/meeting">New Recording</Button>
 
-  <Table.Root>
-    <Table.Header>
-      {#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
-        <Table.Row>
-          {#each headerGroup.headers as header (header.id)}
-            <Table.Head>
-              {#if !header.isPlaceholder}
-                <FlexRender
-                  content={header.column.columnDef.header}
-                  context={header.getContext()}
-                />
-              {/if}
-            </Table.Head>
-          {/each}
-        </Table.Row>
-      {/each}
-    </Table.Header>
-    <Table.Body>
-      {#each table.getRowModel().rows as row (row.id)}
-        <Table.Row data-state={row.getIsSelected() && "selected"}>
-          {#each row.getVisibleCells() as cell (cell.id)}
-            <Table.Cell>
-              <a href={`/meeting/${cell.getValue()}`}>
-                <FlexRender
-                  content={cell.column.columnDef.cell}
-                  context={cell.getContext()}
-                />
-              </a>
-            </Table.Cell>
-          {/each}
-        </Table.Row>
-      {:else}
-        <Table.Row>
-          <Table.Cell colspan={columns.length} class="h-24 text-center"
-            >No results.</Table.Cell
-          >
-        </Table.Row>
-      {/each}
-    </Table.Body>
-  </Table.Root>
+  <div class="rounded-md border">
+    <Table.Root>
+      <Table.Header>
+        {#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
+          <Table.Row>
+            {#each headerGroup.headers as header (header.id)}
+              <Table.Head>
+                {#if !header.isPlaceholder}
+                  <FlexRender
+                    content={header.column.columnDef.header}
+                    context={header.getContext()}
+                  />
+                {/if}
+              </Table.Head>
+            {/each}
+          </Table.Row>
+        {/each}
+      </Table.Header>
+      <Table.Body>
+        {#each table.getRowModel().rows as row (row.id)}
+          <Table.Row data-state={row.getIsSelected() && "selected"}>
+            {#each row.getVisibleCells() as cell (cell.id)}
+              <Table.Cell>
+                <a href={`/meeting/${row.getValue("id")}`}>
+                  <FlexRender
+                    content={cell.column.columnDef.cell}
+                    context={cell.getContext()}
+                  />
+                </a>
+              </Table.Cell>
+            {/each}
+          </Table.Row>
+        {:else}
+          <Table.Row>
+            <Table.Cell colspan={columns.length} class="h-24 text-center"
+              >No results.</Table.Cell
+            >
+          </Table.Row>
+        {/each}
+      </Table.Body>
+    </Table.Root>
+  </div>
 </div>

@@ -65,8 +65,6 @@ You are a helpful assistant who combines multiple structured meeting summaries i
     } else {
         return Err("No content returned from Ollama".to_string());
     }
-
-    app.emit("summarization-finished", &meeting_id).unwrap();
 }
 
 #[tauri::command]
