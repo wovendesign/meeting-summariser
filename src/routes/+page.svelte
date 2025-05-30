@@ -62,7 +62,7 @@
   });
 </script>
 
-<div class="flex gap-8 p-8 flex-col">
+<div class="flex gap-8 p-8 flex-col overflow-y-scroll h-full">
   <div class="flex flex-col items-start gap-2">
     <div class="flex items-center justify-between w-full">
       <h1
