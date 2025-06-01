@@ -7,6 +7,7 @@ use tokio::fs;
 mod whisperx;
 mod llm;
 mod audio;
+mod meeting;
 
 #[derive(Default)]
 struct AppState {
@@ -183,7 +184,8 @@ pub fn run() {
             whisperx::check_python_installation,
             whisperx::check_whisperx_installation,
             whisperx::transcribe,
-            whisperx::is_transcribing
+            whisperx::is_transcribing,
+            meeting::save_speaker_names
         ])
         .setup(|app| {
             app.manage(Mutex::new(AppState::default()));

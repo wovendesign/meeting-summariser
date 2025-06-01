@@ -249,6 +249,17 @@
     }
   }
 
+  async function reloadTranscript() {
+    try {
+      await getTranscript();
+      await getTranscriptJson();
+      toast.success("Transcript reloaded successfully!");
+    } catch (error) {
+      console.error("Error reloading transcript:", error);
+      toast.error("Error reloading transcript: " + error);
+    }
+  }
+
   listen<string>("summarization-started", (event) => {
     toast.info("Summarization started: " + event.payload);
   });
@@ -401,7 +412,12 @@
   </section>
 
   <section>
-    <SpeakerNaming {audioURL} json={transcriptJsonContent} />
+    <SpeakerNaming
+      {audioURL}
+      {reloadTranscript}
+      meetingId={data.id}
+      json={transcriptJsonContent}
+    />
   </section>
 
   <section>
