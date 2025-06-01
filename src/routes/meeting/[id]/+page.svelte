@@ -35,6 +35,9 @@
   let name = $state(`Meeting ${data.id}`);
   let generatingName = $state(false);
 
+  let isTranscribing: String | null = $state(null);
+  let isSummarizing: String | null = $state(null);
+
   let meetingMetadata: {
     name?: string;
   } = $state({});
@@ -75,12 +78,12 @@
         meetingId: data.id,
       });
       await getMeetingMetadata();
+      isSummarizing = null; // Reset summarization status after fetching summary
     } catch (error) {
       console.error("Error regenerating summary:", error);
       // Handle error appropriately, e.g., show a toast notification
       toast.error("Error regenerating summary: " + error);
       saveStatus = "Error regenerating summary";
-      return;
     }
   }
 
@@ -98,16 +101,20 @@
       meetingId: data.id,
     });
 
+    isSummarizing = await invoke("is_summarizing", {
+      meetingId: data.id,
+    });
+
     if (!isTranscribing) {
       await getTranscript();
       await getTranscriptJson();
     }
-    // await getSummary();
+    if (!isSummarizing) {
+      await getSummary();
+    }
     await getAudio();
     await getMeetingMetadata();
   });
-
-  let isTranscribing: String | null = $state(null);
 
   async function checkTranscriptionStatus() {
     try {
@@ -191,6 +198,7 @@
 
   async function getSummary(generateIfNotExists = false) {
     try {
+      console.log("Fetching summary for meeting ID:", data.id);
       summaryContent = await invoke("get_meeting_summary", {
         meetingId: data.id,
       });
@@ -199,17 +207,7 @@
       summaryContent = null;
 
       if (generateIfNotExists) {
-        await invoke("generate_summary", {
-          meetingId: data.id,
-        })
-          .then(() => {
-            console.log("Summary generated successfully");
-            getSummary();
-          })
-          .catch((err) => {
-            console.error("Error generating summary:", err);
-            toast.error("Error generating summary: " + err);
-          });
+        await regenerateSummary();
       } else {
         toast.error("Error fetching summary: " + error);
         return;
@@ -261,6 +259,7 @@
   }
 
   listen<string>("summarization-started", (event) => {
+    isSummarizing = event.payload;
     toast.info("Summarization started: " + event.payload);
   });
 
@@ -339,12 +338,12 @@
     </DropdownMenu.Root>
   </div>
 
-  <Card.Root>
+  <Card.Root class="group">
     <Card.Header class="flex items-center justify-between">
       <Card.Title>Recorded Meeting</Card.Title>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger
-          class={buttonVariants({ variant: "outline", size: "icon" })}
+          class={clsx(buttonVariants({ variant: "outline", size: "icon" }))}
         >
           <Ellipsis />
         </DropdownMenu.Trigger>
@@ -426,7 +425,30 @@
         <Card.Title>Transcription Summary</Card.Title>
       </Card.Header>
       <Card.Content class="prose prose-invert mx-auto">
-        {#if summaryContent}
+        {#if isSummarizing === data.id}
+          <div class={"flex-wrap gap-2 animate-pulse flex"}>
+            <div class="h-4 w-12 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-32 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-28 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-12 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-32 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-28 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+          </div>
+        {:else if isSummarizing && isSummarizing !== data.id && !summaryContent}
+          <p class="text-sm text-muted-foreground">
+            Another summarization is in progress. Please wait.
+          </p>
+        {:else if summaryContent}
           {@html markdownContent}
         {:else}
           <p>No summary available.</p>
