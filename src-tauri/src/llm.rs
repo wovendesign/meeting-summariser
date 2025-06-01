@@ -1,13 +1,26 @@
-use crate::{get_meeting_transcript, MeetingMetadata};
+use crate::{get_meeting_transcript, AppState, MeetingMetadata};
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion;
 use openai_api_rs::v1::chat_completion::ChatCompletionRequest;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::fs;
+use tokio::sync::Mutex;
 
 #[tauri::command]
 pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
-    println!("");
+    // Check if another transcription is already running
+    let state = app.state::<Mutex<AppState>>();
+    // Lock the mutex to get mutable access:
+    let mut state = state.lock().await;
+
+    if state.currently_summarizing.is_some() {
+       return Err("Another Summarization is running".to_string());
+    }
+
+    // Modify the state:
+    state.currently_summarizing = Some(meeting_id.to_string());
+
+    println!();
     println!("Summarization started!");
     let transcript = get_meeting_transcript(app.clone(), meeting_id).await?;
 
@@ -50,6 +63,9 @@ You are a helpful assistant who combines multiple structured meeting summaries i
         .map_err(|e| e.to_string())?;
     println!("Content: {:?}", result.choices[0].message.content);
     let content = result.choices[0].message.content.clone();
+
+    state.currently_summarizing = None;
+
     if let Some(summary) = content {
         // Add it to meeting.json if it exists
         let app_dir = app
@@ -63,10 +79,19 @@ You are a helpful assistant who combines multiple structured meeting summaries i
             .map_err(|e| e.to_string())?;
 
         generate_meeting_name(app.clone(), meeting_id).await?;
-        return Ok(summary.to_string());
+        Ok(summary.to_string())
     } else {
-        return Err("No content returned from Ollama".to_string());
+        Err("No content returned from Ollama".to_string())
     }
+}
+
+#[tauri::command]
+pub async fn is_summarizing(app: AppHandle) -> Result<Option<String>, String> {
+    let state = app.state::<Mutex<AppState>>();
+    // Lock the mutex to get mutable access:
+    let state = state.lock().await;
+
+    Ok(state.currently_summarizing.clone())
 }
 
 #[tauri::command]

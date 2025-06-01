@@ -1,12 +1,18 @@
+use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_fs::FsExt;
 use tokio::fs;
 
 mod whisperx;
 mod llm;
 mod audio;
+
+#[derive(Default)]
+struct AppState {
+    currently_transcribing: Option<String>,
+    currently_summarizing: Option<String>,
+}
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
@@ -146,13 +152,13 @@ async fn get_meeting_audio(app: AppHandle, meeting_id: &str) -> Result<Response,
     let audio_path = base_dir.join(file_name);
 
     let data = fs::read(audio_path);
-    match data.await {
+    return match data.await {
         Ok(audio_data) => {
             // Create a response with the audio data
             let response = Response::new(audio_data);
-            return Ok(response);
+            Ok(response)
         }
-        Err(e) => return Err(e.to_string()),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -173,10 +179,16 @@ pub fn run() {
             llm::get_meeting_summary,
             llm::generate_meeting_name,
             llm::generate_summary,
+            llm::is_summarizing,
             whisperx::check_python_installation,
             whisperx::check_whisperx_installation,
-            whisperx::transcribe
+            whisperx::transcribe,
+            whisperx::is_transcribing
         ])
+        .setup(|app| {
+            app.manage(Mutex::new(AppState::default()));
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

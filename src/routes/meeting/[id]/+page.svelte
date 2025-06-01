@@ -17,6 +17,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import RefreshCcw from "@lucide/svelte/icons/refresh-ccw";
   import Ellipsis from "@lucide/svelte/icons/ellipsis";
+  import FolderClosed from "@lucide/svelte/icons/folder-closed";
   import Pen from "@lucide/svelte/icons/pen";
   import clsx from "clsx";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -93,29 +94,64 @@
   });
 
   onMount(async () => {
-    await getTranscript();
-    await getTranscriptJson();
+    isTranscribing = await invoke("is_transcribing", {
+      meetingId: data.id,
+    });
+
+    if (!isTranscribing) {
+      await getTranscript();
+      await getTranscriptJson();
+    }
     // await getSummary();
     await getAudio();
     await getMeetingMetadata();
   });
 
-  let transcriptRetryCound = 0;
+  let isTranscribing: String | null = $state(null);
+
+  async function checkTranscriptionStatus() {
+    try {
+      isTranscribing = await invoke("is_transcribing", {
+        meetingId: data.id,
+      });
+      console.log(
+        "Transcription status for meeting ID",
+        data.id,
+        ":",
+        isTranscribing,
+      );
+    } catch (error) {
+      toast.error("Error checking transcription status: " + error);
+      console.error("Error checking transcription status:", error);
+    }
+  }
+
   async function getTranscript() {
-    console.log("Fetching transcript for meeting ID:", data.id);
     try {
       transcriptContent = await invoke("get_meeting_transcript", {
         meetingId: data.id,
       });
+      isTranscribing = null; // Reset transcription status after fetching transcript
     } catch (error) {
       console.error("Error fetching transcript:", error);
-      transcriptContent = "Generating transcript …";
+
+      await checkTranscriptionStatus();
+      if (isTranscribing && isTranscribing !== data.id) {
+        // If transcription is still in progress, show a toast notification
+        toast.info("Another Transcription is still in progress. Please wait.");
+        return;
+      } else if (isTranscribing === data.id) {
+        // If transcription is in progress for this meeting, show a toast notification
+        toast.info("Transcription is still in progress. Please wait.");
+        return;
+      }
 
       // When the transcribe function settles without an error, retry fetching the transcript, otherwise show a toast error
-      await invoke("transcribe", { meetingId: data.id })
+      invoke("transcribe", { meetingId: data.id })
         .then(() => {
           console.log("Transcription finished successfully");
           getTranscript();
+          getTranscriptJson();
 
           // Load Summary, and generate one if it doesn't exist
           getSummary(true);
@@ -123,7 +159,23 @@
         .catch((err) => {
           console.error("Error transcribing audio:", err);
         });
+
+      await checkTranscriptionStatus();
     }
+  }
+
+  async function transcribe() {
+    invoke("transcribe", { meetingId: data.id })
+      .then(() => {
+        getTranscript();
+        getTranscriptJson();
+        getSummary(true);
+      })
+      .catch((error) => {
+        console.error("Error starting transcription:", error);
+        toast.error("Error starting transcription: " + error);
+      });
+    checkTranscriptionStatus();
   }
 
   async function getTranscriptJson() {
@@ -137,7 +189,6 @@
     }
   }
 
-  let summaryRetryCount = 0;
   async function getSummary(generateIfNotExists = false) {
     try {
       summaryContent = await invoke("get_meeting_summary", {
@@ -201,6 +252,19 @@
   listen<string>("summarization-started", (event) => {
     toast.info("Summarization started: " + event.payload);
   });
+
+  listen<string>(data.id, (event) => {
+    if (event.payload === "transcription-started") {
+      toast.info("Transcription started for meeting ID: " + data.id);
+      isTranscribing = data.id;
+    } else if (event.payload === "transcription-finished") {
+      toast.success("Transcription finished for meeting ID: " + data.id);
+      isTranscribing = null;
+      getTranscript();
+      getTranscriptJson();
+      getSummary(true);
+    }
+  });
 </script>
 
 <Toaster />
@@ -252,6 +316,14 @@
           <RefreshCcw />
           <span>Re-Generate Name</span>
         </DropdownMenu.Item>
+        <DropdownMenu.Item
+          onclick={() => {
+            alert("This feature is not implemented yet.");
+          }}
+        >
+          <FolderClosed />
+          <span>Reveal in Finder</span>
+        </DropdownMenu.Item>
       </DropdownMenu.Content>
     </DropdownMenu.Root>
   </div>
@@ -266,17 +338,7 @@
           <Ellipsis />
         </DropdownMenu.Trigger>
         <DropdownMenu.Content class="w-56 mr-4">
-          <DropdownMenu.Item
-            onclick={async () => {
-              try {
-                await invoke("transcribe", { meetingId: data.id }).then(() => {
-                  console.log("Transcription finished successfully");
-                });
-              } catch (err) {
-                console.error("Error transcribing audio:", err);
-              }
-            }}
-          >
+          <DropdownMenu.Item onclick={transcribe}>
             <RefreshCcw />
             <span>Transcribe Audio</span>
           </DropdownMenu.Item>
@@ -298,15 +360,42 @@
         <Card.Title>Transcript</Card.Title>
       </Card.Header>
       <Card.Content>
-        <Textarea
-          bind:value={transcriptContent}
-          placeholder="Edit the Transcript"
-        />
+        {#if isTranscribing === data.id}
+          <div class={"flex-wrap gap-2 animate-pulse flex"}>
+            <div class="h-4 w-12 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-32 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-28 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-12 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-32 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-28 bg-foreground/10 rounded"></div>
+            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+          </div>
+        {:else if isTranscribing && isTranscribing !== data.id}
+          <p class="text-sm text-muted-foreground">
+            Another transcription is in progress. Please wait.
+          </p>
+        {:else if transcriptContent}
+          <Textarea
+            bind:value={transcriptContent}
+            placeholder="Edit the Transcript"
+          />
+        {/if}
       </Card.Content>
       <Card.Footer class="flex gap-2">
-        <Button onclick={saveTranscript} disabled={savingTranscript}>
-          {savingTranscript ? "Saving..." : "Save Transcript"}
-        </Button>
+        {#if !isTranscribing}
+          <Button onclick={saveTranscript} disabled={savingTranscript}>
+            {savingTranscript ? "Saving..." : "Save Transcript"}
+          </Button>
+        {/if}
       </Card.Footer>
     </Card.Root>
   </section>
