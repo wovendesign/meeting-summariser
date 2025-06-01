@@ -11,7 +11,7 @@
     buttonVariants,
   } from "$lib/components/ui/button/button.svelte";
   import { Textarea } from "$lib/components/ui/textarea";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { toast, Toaster } from "svelte-sonner";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
@@ -23,7 +23,7 @@
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { listen } from "@tauri-apps/api/event";
+  import { listen, once } from "@tauri-apps/api/event";
 
   let transcriptContent = $state("");
   let transcriptJsonContent: string | null = $state(null);
@@ -114,6 +114,34 @@
     }
     await getAudio();
     await getMeetingMetadata();
+
+    // register Tauri event listeners once on mount
+    summarizationListener = await once<string>(
+      "summarization-started",
+      (event) => {
+        console.log(event);
+        isSummarizing = event.payload;
+        console.log("Summarization started for meeting ID:", event.payload);
+        toast.info("Summarization started: " + event.payload);
+      },
+    );
+    transcriptionListener = await listen<string>(data.id, (event) => {
+      if (event.payload === "transcription-started") {
+        toast.info("Transcription started for meeting ID: " + data.id);
+        isTranscribing = data.id;
+      } else if (event.payload === "transcription-finished") {
+        toast.success("Transcription finished for meeting ID: " + data.id);
+        isTranscribing = null;
+        getTranscript();
+        getTranscriptJson();
+        getSummary(true);
+      }
+    });
+  });
+
+  onDestroy(() => {
+    summarizationListener();
+    transcriptionListener();
   });
 
   async function checkTranscriptionStatus() {
@@ -258,23 +286,8 @@
     }
   }
 
-  listen<string>("summarization-started", (event) => {
-    isSummarizing = event.payload;
-    toast.info("Summarization started: " + event.payload);
-  });
-
-  listen<string>(data.id, (event) => {
-    if (event.payload === "transcription-started") {
-      toast.info("Transcription started for meeting ID: " + data.id);
-      isTranscribing = data.id;
-    } else if (event.payload === "transcription-finished") {
-      toast.success("Transcription finished for meeting ID: " + data.id);
-      isTranscribing = null;
-      getTranscript();
-      getTranscriptJson();
-      getSummary(true);
-    }
-  });
+  let summarizationListener: () => void;
+  let transcriptionListener: () => void;
 </script>
 
 <Toaster />
