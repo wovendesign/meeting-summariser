@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { writeFile, BaseDirectory, mkdir } from "@tauri-apps/plugin-fs";
   import { onDestroy } from "svelte";
   import { Button } from "./ui/button";
   import Mic from "@lucide/svelte/icons/mic";
@@ -52,10 +53,8 @@
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+        const audioBlob = new Blob(audioChunks, { type: "audio/ogg" });
         audioURL = URL.createObjectURL(audioBlob);
-        // await uploadToServer(audioBlob);
-        // TODO: SAFE FILE
         audioChunks = [];
 
         // Clean up audio analysis
@@ -69,6 +68,27 @@
         audioContext = null;
         analyser = null;
         micLevel = 0;
+
+        // Safe Recording
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const recordingName = `recording-${timestamp}`;
+
+        const contents = new Uint8Array(await audioBlob.arrayBuffer());
+        // Create Meeting Directory
+        await mkdir(`uploads/${recordingName}`, {
+          baseDir: BaseDirectory.AppLocalData,
+        });
+        // Write the recording file
+        await writeFile(
+          `uploads/${recordingName}/${recordingName}.ogg`,
+          contents,
+          {
+            baseDir: BaseDirectory.AppLocalData,
+          },
+        );
+
+        // Redirect to new meeting page
+        window.location.href = `/meeting/${recordingName}`;
       };
 
       mediaRecorder.start();

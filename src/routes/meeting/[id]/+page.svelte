@@ -22,6 +22,7 @@
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
+  import { listen } from "@tauri-apps/api/event";
 
   let transcriptContent = $state("");
   let transcriptJsonContent: string | null = $state(null);
@@ -93,20 +94,35 @@
 
   onMount(async () => {
     await getTranscript();
-    await getSummary();
-    await getAudio();
     await getTranscriptJson();
+    // await getSummary();
+    await getAudio();
     await getMeetingMetadata();
   });
 
+  let transcriptRetryCound = 0;
   async function getTranscript() {
+    console.log("Fetching transcript for meeting ID:", data.id);
     try {
       transcriptContent = await invoke("get_meeting_transcript", {
         meetingId: data.id,
       });
     } catch (error) {
       console.error("Error fetching transcript:", error);
-      transcriptContent = "Error fetching transcript";
+      transcriptContent = "Generating transcript …";
+
+      // When the transcribe function settles without an error, retry fetching the transcript, otherwise show a toast error
+      await invoke("transcribe", { meetingId: data.id })
+        .then(() => {
+          console.log("Transcription finished successfully");
+          getTranscript();
+
+          // Load Summary, and generate one if it doesn't exist
+          getSummary(true);
+        })
+        .catch((err) => {
+          console.error("Error transcribing audio:", err);
+        });
     }
   }
 
@@ -121,7 +137,8 @@
     }
   }
 
-  async function getSummary() {
+  let summaryRetryCount = 0;
+  async function getSummary(generateIfNotExists = false) {
     try {
       summaryContent = await invoke("get_meeting_summary", {
         meetingId: data.id,
@@ -129,6 +146,23 @@
     } catch (error) {
       console.error("Error fetching summary:", error);
       summaryContent = null;
+
+      if (generateIfNotExists) {
+        await invoke("generate_summary", {
+          meetingId: data.id,
+        })
+          .then(() => {
+            console.log("Summary generated successfully");
+            getSummary();
+          })
+          .catch((err) => {
+            console.error("Error generating summary:", err);
+            toast.error("Error generating summary: " + err);
+          });
+      } else {
+        toast.error("Error fetching summary: " + error);
+        return;
+      }
     }
   }
 
@@ -163,6 +197,10 @@
       generatingName = false;
     }
   }
+
+  listen<string>("summarization-started", (event) => {
+    toast.info("Summarization started: " + event.payload);
+  });
 </script>
 
 <Toaster />

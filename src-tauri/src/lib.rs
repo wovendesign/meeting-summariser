@@ -6,12 +6,9 @@ use tokio::fs;
 
 mod whisperx;
 mod llm;
+mod audio;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
 
 #[derive(Serialize, Deserialize)]
 struct MeetingMetadata {
@@ -74,7 +71,7 @@ async fn add_meeting(app: AppHandle, name: &str) -> Result<(), String> {
 #[tauri::command]
 async fn get_meeting_transcript(app: AppHandle, meeting_id: &str) -> Result<String, String> {
     println!("Getting meeting transcript for {}", meeting_id);
-    
+
     let app_dir = app
         .path()
         .app_local_data_dir()
@@ -82,7 +79,7 @@ async fn get_meeting_transcript(app: AppHandle, meeting_id: &str) -> Result<Stri
     let base_dir = app_dir.join("uploads").join(meeting_id);
     let file_name = format!("{}.txt", meeting_id);
     let transcript_path = base_dir.join(file_name);
-    
+
     println!("Path: {}", transcript_path.display());
 
     // read transcript file
@@ -108,21 +105,6 @@ async fn get_meeting_transcript_json(app: AppHandle, meeting_id: &str) -> Result
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
-    // resolve <app>/uploads/<name>/summary.md
-    let app_dir = app
-        .path()
-        .app_local_data_dir()
-        .expect("Failed to get app local data directory");
-    let base_dir = app_dir.join("uploads").join(meeting_id);
-    let summary_path = base_dir.join("summary.md");
-
-    // read summary file
-    fs::read_to_string(summary_path)
-        .await
-        .map_err(|e| e.to_string())
-}
 
 #[tauri::command]
 async fn get_meeting_metadata(app: AppHandle, meeting_id: &str) -> Result<MeetingMetadata, String> {
@@ -160,7 +142,7 @@ async fn get_meeting_audio(app: AppHandle, meeting_id: &str) -> Result<Response,
         .app_local_data_dir()
         .expect("Failed to get app local data directory");
     let base_dir = app_dir.join("uploads").join(meeting_id);
-    let file_name = format!("{}.webm", meeting_id);
+    let file_name = format!("{}.ogg", meeting_id);
     let audio_path = base_dir.join(file_name);
 
     let data = fs::read(audio_path);
@@ -182,14 +164,13 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            greet,
             get_meetings,
             add_meeting,
             get_meeting_transcript,
-            get_meeting_summary,
             get_meeting_audio,
             get_meeting_transcript_json,
             get_meeting_metadata,
+            llm::get_meeting_summary,
             llm::generate_meeting_name,
             llm::generate_summary,
             whisperx::check_python_installation,

@@ -1,4 +1,4 @@
-use crate::{get_meeting_summary, get_meeting_transcript, MeetingMetadata};
+use crate::{get_meeting_transcript, MeetingMetadata};
 use openai_api_rs::v1::api::OpenAIClient;
 use openai_api_rs::v1::chat_completion;
 use openai_api_rs::v1::chat_completion::ChatCompletionRequest;
@@ -7,6 +7,8 @@ use tokio::fs;
 
 #[tauri::command]
 pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
+    println!("");
+    println!("Summarization started!");
     let transcript = get_meeting_transcript(app.clone(), meeting_id).await?;
 
     app.emit("summarization-started", &meeting_id).unwrap();
@@ -66,6 +68,23 @@ You are a helpful assistant who combines multiple structured meeting summaries i
         return Err("No content returned from Ollama".to_string());
     }
 }
+
+#[tauri::command]
+pub async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
+    // resolve <app>/uploads/<name>/summary.md
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let base_dir = app_dir.join("uploads").join(meeting_id);
+    let summary_path = base_dir.join("summary.md");
+
+    // read summary file
+    fs::read_to_string(summary_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 
 #[tauri::command]
 pub async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<String, String> {

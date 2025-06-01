@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager};
 use tokio::process::Command;
 
 #[tauri::command]
-pub async  fn check_python_installation() -> Result<(), String> {
+pub async fn check_python_installation() -> Result<(), String> {
     let output = Command::new("python3")
         .arg("--version")
         .output()
@@ -37,7 +37,7 @@ pub async fn check_whisperx_installation() -> Result<(), String> {
 
 
 #[tauri::command(async)]
-pub  async fn transcribe(app: AppHandle, meeting_id: &str) -> Result<(), String> {
+pub async fn transcribe(app: AppHandle, meeting_id: &str) -> Result<(), String> {
     check_whisperx_installation().await?;
 
     let app_dir = app
@@ -45,7 +45,7 @@ pub  async fn transcribe(app: AppHandle, meeting_id: &str) -> Result<(), String>
         .app_local_data_dir()
         .expect("Failed to get app local data directory");
     let base_dir = app_dir.join("uploads").join(meeting_id);
-    let file_name = format!("{}.webm", meeting_id);
+    let file_name = format!("{}.ogg", meeting_id);
     let audio_path = base_dir.join(file_name);
 
     // whisperx '${filepath}' --compute_type int8 --diarize --output_dir '${outDir}'
