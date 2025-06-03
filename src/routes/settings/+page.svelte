@@ -19,6 +19,27 @@
       console.error("Error checking Python status:", error);
     }
   }
+
+  async function downloadPython() {
+    try {
+      await invoke("download_python");
+      toast.success("Python downloaded successfully!");
+      pythonStatus = "Downloaded";
+    } catch (error) {
+      toast.error("Error downloading Python: " + error);
+      console.error("Error downloading Python:", error);
+    }
+  }
+
+  async function downloadWhisper() {
+    try {
+      await invoke("download_whisperx");
+      toast.success("Whisper downloaded successfully!");
+    } catch (error) {
+      toast.error("Error downloading Whisper: " + error);
+      console.error("Error downloading Whisper:", error);
+    }
+  }
 </script>
 
 <div class="container flex flex-col gap-4 p-4">
@@ -33,6 +54,7 @@
       >
     </p>
     <Button onclick={checkPythonStatus}>Check Again</Button>
-    <!-- <Button variant="outline" onclick={downloadPython}>Download Python</Button> -->
+    <Button variant="outline" onclick={downloadPython}>Download Python</Button>
+    <Button variant="outline" onclick={downloadWhisper}>Download Whisper</Button>
   </div>
 </div>

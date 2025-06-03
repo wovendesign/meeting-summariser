@@ -25,8 +25,7 @@ serde_json = "1"
 tauri-plugin-fs = "2"
 tokio = { version = "1.45.1", features = ["full"] }
 openai-api-rs = "6.0.6"
-specta-typescript = "0.0.9"
-tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+tauri-plugin-http = "2"
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.

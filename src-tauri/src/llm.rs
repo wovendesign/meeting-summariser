@@ -14,7 +14,7 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
     let mut state = state.lock().await;
 
     if state.currently_summarizing.is_some() {
-       return Err("Another Summarization is running".to_string());
+        return Err("Another Summarization is running".to_string());
     }
 
     // Modify the state:
@@ -109,7 +109,6 @@ pub async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<Str
         .await
         .map_err(|e| e.to_string())
 }
-
 
 #[tauri::command]
 pub async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<String, String> {

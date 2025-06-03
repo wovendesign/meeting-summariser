@@ -15,9 +15,20 @@
   import { FlexRender } from "$lib/components/ui/data-table/index.js";
 
   import FileDrop from "svelte-tauri-filedrop";
+    import { toast, Toaster } from "svelte-sonner";
 
-  function open(paths: string[]) {
-    // ...
+  async function open(path: string) {
+    console.log("Files dropped:", path);
+    
+    try {
+      await invoke("convert_user_audio", { audioPath: path });
+      toast.success("File processed successfully!");
+      // Refresh the meetings list after processing
+      getMeetings();
+    } catch (error) {
+      console.error("Error processing dropped files:", error);
+      toast.error("Error processing files: " + error);
+    }
   }
 
   let meetings: {
@@ -69,6 +80,7 @@
 </script>
 
 <div class="flex gap-8 p-8 flex-col overflow-y-scroll h-full">
+  <Toaster />
   <div class="flex flex-col items-start gap-2">
     <div class="flex items-center justify-between w-full">
       <h1
@@ -143,9 +155,14 @@
       </div>
     </Card.Content>
   </Card.Root>
-  <FileDrop extensions={["json"]} handleFiles={open} let:files>
+  <FileDrop  extensions={[
+    "mp3",
+    "wav",
+    "ogg",
+    "m4a"
+    ]} handleOneFile={open} let:files>
     <div class="dropzone" class:droppable={files.length > 0}>
-      <h2>Drop JSON files</h2>
+      <h2>Drop Audio files</h2>
     </div>
   </FileDrop>
 </div>
@@ -154,7 +171,7 @@
   .dropzone {
     margin: 20px;
     padding: 20px;
-    background: #eee;
+    background: #ffffff08;
   }
   .droppable {
     background: #d6dff0;

@@ -1,13 +1,13 @@
-use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
+use tokio::sync::Mutex;
 
-mod whisperx;
-mod llm;
 mod audio;
+mod llm;
 mod meeting;
+mod whisperx;
 
 #[derive(Default)]
 struct AppState {
@@ -112,7 +112,6 @@ async fn get_meeting_transcript_json(app: AppHandle, meeting_id: &str) -> Result
         .map_err(|e| e.to_string())
 }
 
-
 #[tauri::command]
 async fn get_meeting_metadata(app: AppHandle, meeting_id: &str) -> Result<MeetingMetadata, String> {
     // resolve <app>/uploads/<meeting_id>/meeting.json
@@ -135,12 +134,11 @@ async fn get_meeting_metadata(app: AppHandle, meeting_id: &str) -> Result<Meetin
     } else {
         Ok(MeetingMetadata {
             id: meeting_id.to_string(),
-            name: None
+            name: None,
         })
     }
     // serde_json::from_str(&content).map_err(|e| e.to_string())
 }
-
 
 #[tauri::command]
 async fn get_meeting_audio(app: AppHandle, meeting_id: &str) -> Result<Response, String> {
@@ -160,14 +158,13 @@ async fn get_meeting_audio(app: AppHandle, meeting_id: &str) -> Result<Response,
             Ok(response)
         }
         Err(e) => Err(e.to_string()),
-    }
+    };
 }
-
-
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -186,11 +183,14 @@ pub fn run() {
             whisperx::transcribe,
             whisperx::transcribe_with_chunking,
             whisperx::is_transcribing,
+            whisperx::download_python,
+            whisperx::download_whisperx,
             meeting::save_speaker_names,
             audio::check_ffmpeg_installation_command,
             audio::get_audio_duration_command,
             audio::analyze_audio_command,
-            audio::split_audio_into_chunks_command
+            audio::split_audio_into_chunks_command,
+            audio::convert_user_audio
         ])
         .setup(|app| {
             app.manage(Mutex::new(AppState::default()));

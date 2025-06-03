@@ -25,6 +25,7 @@
         }
       ]
     },
-    "opener:default"
+    "opener:default",
+    "http:default"
   ]
 }

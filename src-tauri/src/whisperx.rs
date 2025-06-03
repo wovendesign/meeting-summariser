@@ -1,17 +1,23 @@
 use crate::audio::{analyze_audio, split_audio_into_chunks, AudioChunk};
+use crate::AppState;
 use std::process::Stdio;
-use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_http::reqwest;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
-use crate::AppState;
-
 #[tauri::command]
-pub async fn check_python_installation() -> Result<(), String> {
-    let output = Command::new("python3")
+pub async fn check_python_installation(app: AppHandle) -> Result<(), String> {
+    // Check if Python is installed
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let resource_path = app_dir.join("python");
+
+    let output = Command::new(format!("{}/bin/python3", resource_path.display()))
         .arg("--version")
         .output()
         .await
@@ -21,15 +27,106 @@ pub async fn check_python_installation() -> Result<(), String> {
         Ok(())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("python3 not found or returned error: {}", stderr.trim()))
+        Err(format!(
+            "python3 not found or returned error: {}",
+            stderr.trim()
+        ))
     }
 }
 
 #[tauri::command]
-pub async fn check_whisperx_installation() -> Result<(), String> {
-    check_python_installation().await?;
+pub async fn download_python(app: AppHandle) -> Result<(), String> {
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let resource_path = app_dir;
 
-    let output = Command::new("whisperx")
+    // Ensure the resource directory exists
+    fs::create_dir_all(&resource_path)
+        .await
+        .map_err(|e| format!("Failed to create resource directory: {}", e))?;
+
+    let res = reqwest::get("https://github.com/astral-sh/python-build-standalone/releases/download/20250529/cpython-3.12.10+20250529-x86_64-unknown-linux-gnu-install_only.tar.gz").await;
+    // println!("{:?}", res.status()); // e.g. 200
+    // println!("{:?}", res.text().await); // e.g Ok("{ Content }")
+
+    if res.is_err() {
+        return Err(format!("Failed to download Python: {}", res.unwrap_err()));
+    }
+    let response = res.unwrap();
+    if !response.status().is_success() {
+        return Err(format!("Failed to download Python: {}", response.status()));
+    }
+    let tarball = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read Python tarball bytes: {}", e))?;
+    let tarball_path = resource_path.join("python.tar.gz");
+    fs::write(&tarball_path, &tarball)
+        .await
+        .map_err(|e| format!("Failed to write Python tarball: {}", e))?;
+
+    // Extract the tarball
+    let output = Command::new("tar")
+        .arg("-xzf")
+        .arg(&tarball_path)
+        .arg("-C")
+        .arg(&resource_path)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to extract Python tarball: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to extract Python tarball: {}",
+            stderr.trim()
+        ));
+    }
+    // Clean up the tarball
+    fs::remove_file(&tarball_path)
+        .await
+        .map_err(|e| format!("Failed to remove Python tarball: {}", e))?;
+
+    // Ensure the extracted directory is executable
+    let python_dir = resource_path.join("python");
+
+    let output = Command::new("chmod")
+        .arg("-R")
+        .arg("755")
+        .arg(&python_dir)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to set permissions on Python directory: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to set permissions on Python directory: {}",
+            stderr.trim()
+        ));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn check_whisperx_installation(app: AppHandle) -> Result<(), String> {
+    check_python_installation(app.clone()).await?;
+
+    // Get python resource path
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let resource_path = app_dir.join("python");
+    let lib_path = resource_path.join("lib").join("python3.12").join("site-packages");
+
+    let output = Command::new(format!("{}/bin/python", resource_path.display()))
+        .env("PYTHONPATH", &lib_path)
+        .arg("-m")
+        .arg("whisperx")
         .arg("--version")
         .output()
         .await
@@ -39,29 +136,75 @@ pub async fn check_whisperx_installation() -> Result<(), String> {
         Ok(())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("whisperx not found or returned error: {}", stderr.trim()))
+        Err(format!(
+            "whisperx not found or returned error: {}",
+            stderr.trim()
+        ))
     }
 }
 
 #[tauri::command]
-pub async fn transcribe(app: AppHandle, meeting_id: &str, state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+pub async fn download_whisperx(app: AppHandle) -> Result<(), String> {
+    // Check if Python is installed
+    check_python_installation(app.clone()).await?;
+
+    // Get python resource path
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let resource_path = app_dir.join("python");
+
+    // Ensure the lib directory exists for packages
+    let lib_path = resource_path.join("lib").join("python3.12").join("site-packages");
+    fs::create_dir_all(&lib_path)
+        .await
+        .map_err(|e| format!("Failed to create lib directory: {}", e))?;
+
+    // Download the whisperx package with dependencies
+    let output = Command::new(format!("{}/bin/python", resource_path.display()))
+        .arg("-m")
+        .arg("pip")
+        .arg("install")
+        .arg("--target")
+        .arg(&lib_path)
+        .arg("whisperx")
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute pip install: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to install whisperx: {}",
+            stderr.trim()
+        ));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn transcribe(
+    app: AppHandle,
+    meeting_id: &str,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
     // Check if WhisperX is Available
-    // check_whisperx_installation().await?;
+    check_whisperx_installation(app.clone()).await?;
 
     // Check if another transcription is already running
     // Lock the mutex to get mutable access:
     let mut state = state.lock().await;
-    
+
     if state.currently_transcribing.is_some() {
-       return Err("Another Transcription is running".to_string());
+        return Err("Another Transcription is running".to_string());
     }
-    
+
     // Modify the state:
     state.currently_transcribing = Some(meeting_id.to_string());
-    
-    app.emit(meeting_id, "transcription-started").unwrap();
 
-    let app_dir = app
+    app.emit(meeting_id, "transcription-started").unwrap();    let app_dir = app
         .path()
         .app_local_data_dir()
         .expect("Failed to get app local data directory");
@@ -71,13 +214,16 @@ pub async fn transcribe(app: AppHandle, meeting_id: &str, state: State<'_, Mutex
 
     println!("Uploading to {}", audio_path.display());
 
-    let resource_path = app_dir.join("whisper");
+    let resource_path = app_dir.join("python");
+    let lib_path = resource_path.join("lib").join("python3.12").join("site-packages");
 
     println!("{:?}", resource_path);
 
     // Spawn whisperx process with piped stdout and inherited stderr
-    let mut child = Command::new(format!("{}/python/bin/python", resource_path.display()))
-        .arg("-m whisperx")
+    let mut child = Command::new(format!("{}/bin/python", resource_path.display()))
+        .env("PYTHONPATH", &lib_path)
+        .arg("-m")
+        .arg("whisperx")
         .arg(&audio_path)
         .arg("--compute_type")
         .arg("int8")
@@ -87,14 +233,15 @@ pub async fn transcribe(app: AppHandle, meeting_id: &str, state: State<'_, Mutex
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to spawn whisperx: {}", e))?;
-
-    // Pipe and read stderr concurrently (uvx logs may come here)
+        .map_err(|e| format!("Failed to spawn whisperx: {}", e))?;    // Pipe and read stderr concurrently (uvx logs may come here)
     let stderr = child.stderr.take().expect("Failed to take stderr");
-    let meeting_clone = meeting_id.to_string();
     let stderr_task = tokio::spawn(async move {
         let mut errs = BufReader::new(stderr).lines();
-        while let Some(line) = errs.next_line().await.map_err(|e| format!("Error reading stderr: {}", e))? {
+        while let Some(line) = errs
+            .next_line()
+            .await
+            .map_err(|e| format!("Error reading stderr: {}", e))?
+        {
             println!("{}", line);
         }
         Ok::<(), String>(())
@@ -103,18 +250,27 @@ pub async fn transcribe(app: AppHandle, meeting_id: &str, state: State<'_, Mutex
     // Read stdout line by line, print and emit events
     if let Some(stdout) = child.stdout.take() {
         let mut lines = BufReader::new(stdout).lines();
-        while let Some(line) = lines.next_line().await.map_err(|e| format!("Error reading stdout: {}", e))? {
+        while let Some(line) = lines
+            .next_line()
+            .await
+            .map_err(|e| format!("Error reading stdout: {}", e))?
+        {
             println!("{}", line);
         }
     }
 
     // Wait for stderr reader to finish and process exit
-    stderr_task.await.map_err(|e| format!("stderr task join error: {}", e))??;
-    let status = child.wait().await.map_err(|e| format!("Failed to wait on whisperx: {}", e))?;
+    stderr_task
+        .await
+        .map_err(|e| format!("stderr task join error: {}", e))??;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("Failed to wait on whisperx: {}", e))?;
 
     // Clear transcription state
     state.currently_transcribing = None;
-    
+
     if status.success() {
         Ok(())
     } else {
@@ -133,14 +289,18 @@ pub async fn is_transcribing(app: AppHandle) -> Result<Option<String>, String> {
 
 /// Enhanced transcribe function that handles audio chunking automatically
 #[tauri::command]
-pub async fn transcribe_with_chunking(app: AppHandle, meeting_id: &str, state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+pub async fn transcribe_with_chunking(
+    app: AppHandle,
+    meeting_id: &str,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
     // Check if another transcription is already running
     let mut state_lock = state.lock().await;
-    
+
     if state_lock.currently_transcribing.is_some() {
-       return Err("Another Transcription is running".to_string());
+        return Err("Another Transcription is running".to_string());
     }
-    
+
     // Modify the state:
     state_lock.currently_transcribing = Some(meeting_id.to_string());
     drop(state_lock); // Release the lock early
@@ -172,15 +332,20 @@ pub async fn transcribe_with_chunking(app: AppHandle, meeting_id: &str, state: S
     println!("Chunk count: {}", audio_info.chunk_count);
 
     let chunks = if audio_info.needs_splitting {
-        println!("Audio is longer than 30 minutes, splitting into {} chunks", audio_info.chunk_count);
-        split_audio_into_chunks(&audio_path, &base_dir, meeting_id).await.map_err(|e| {
-            // Clear state on error
-            let mut state_lock = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(state.lock())
-            });
-            state_lock.currently_transcribing = None;
-            e
-        })?
+        println!(
+            "Audio is longer than 30 minutes, splitting into {} chunks",
+            audio_info.chunk_count
+        );
+        split_audio_into_chunks(&audio_path, &base_dir, meeting_id)
+            .await
+            .map_err(|e| {
+                // Clear state on error
+                let mut state_lock = tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(state.lock())
+                });
+                state_lock.currently_transcribing = None;
+                e
+            })?
     } else {
         println!("Audio is under 30 minutes, processing as single file");
         vec![AudioChunk {
@@ -197,24 +362,22 @@ pub async fn transcribe_with_chunking(app: AppHandle, meeting_id: &str, state: S
 
     for (i, chunk) in chunks.iter().enumerate() {
         println!("Transcribing chunk {} of {}", i + 1, chunks.len());
-        
+
         let chunk_path = std::path::Path::new(&chunk.file_path);
-        let chunk_dir = chunk_path.parent().unwrap();
-        
-        // Run whisperx on this chunk
-        let result = transcribe_single_chunk(chunk_path, chunk_dir).await;
-        
+        let chunk_dir = chunk_path.parent().unwrap();        // Run whisperx on this chunk
+        let result = transcribe_single_chunk(&app, chunk_path, chunk_dir).await;
+
         match result {
             Ok(_) => {
                 // Read the generated transcript files for this chunk
                 let chunk_stem = chunk_path.file_stem().unwrap().to_string_lossy();
                 let txt_path = chunk_dir.join(format!("{}.txt", chunk_stem));
                 let json_path = chunk_dir.join(format!("{}.json", chunk_stem));
-                
+
                 if let Ok(txt_content) = fs::read_to_string(&txt_path).await {
                     all_transcripts.push(txt_content);
                 }
-                
+
                 if let Ok(json_content) = fs::read_to_string(&json_path).await {
                     all_json_parts.push(json_content);
                 }
@@ -229,7 +392,7 @@ pub async fn transcribe_with_chunking(app: AppHandle, meeting_id: &str, state: S
     // Combine all transcripts into final files
     let combined_transcript = all_transcripts.join("\n\n");
     let final_txt_path = base_dir.join(format!("{}.txt", meeting_id));
-    
+
     if let Err(e) = fs::write(&final_txt_path, combined_transcript).await {
         println!("Warning: Failed to write combined transcript: {}", e);
     }
@@ -243,7 +406,7 @@ pub async fn transcribe_with_chunking(app: AppHandle, meeting_id: &str, state: S
             // In a real scenario, you might want to parse and properly merge JSON
             all_json_parts.join("\n")
         };
-        
+
         let final_json_path = base_dir.join(format!("{}.json", meeting_id));
         if let Err(e) = fs::write(&final_json_path, combined_json).await {
             println!("Warning: Failed to write combined JSON transcript: {}", e);
@@ -256,16 +419,30 @@ pub async fn transcribe_with_chunking(app: AppHandle, meeting_id: &str, state: S
     drop(state_lock);
 
     app.emit(meeting_id, "transcription-finished").unwrap();
-    
+
     println!("Transcription completed for meeting {}", meeting_id);
     Ok(())
 }
 
 /// Helper function to transcribe a single audio chunk
-async fn transcribe_single_chunk(audio_path: &std::path::Path, output_dir: &std::path::Path) -> Result<(), String> {
+async fn transcribe_single_chunk(
+    app: &AppHandle,
+    audio_path: &std::path::Path,
+    output_dir: &std::path::Path,
+) -> Result<(), String> {
     println!("Transcribing: {}", audio_path.display());
 
-    let output = Command::new("uvx")
+    // Get python resource path
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let resource_path = app_dir.join("python");
+    let lib_path = resource_path.join("lib").join("python3.12").join("site-packages");
+
+    let output = Command::new(format!("{}/bin/python", resource_path.display()))
+        .env("PYTHONPATH", &lib_path)
+        .arg("-m")
         .arg("whisperx")
         .arg(audio_path)
         .arg("--compute_type")

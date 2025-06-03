@@ -1,7 +1,8 @@
-use std::path::Path;
-use tokio::process::Command;
+use openai_api_rs::v1::audio;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use tauri::{AppHandle, Manager};
+use tokio::process::Command;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AudioInfo {
@@ -30,7 +31,10 @@ pub async fn check_ffmpeg_installation() -> Result<(), String> {
         Ok(())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("ffmpeg not found or returned error: {}", stderr.trim()))
+        Err(format!(
+            "ffmpeg not found or returned error: {}",
+            stderr.trim()
+        ))
     }
 }
 
@@ -67,10 +71,10 @@ pub async fn get_audio_duration<P: AsRef<Path>>(audio_path: P) -> Result<f64, St
 /// Check audio length and determine if splitting is needed
 pub async fn analyze_audio<P: AsRef<Path>>(audio_path: P) -> Result<AudioInfo, String> {
     let duration_seconds = get_audio_duration(&audio_path).await?;
-    
+
     // 30 minutes = 1800 seconds
     const MAX_CHUNK_DURATION: f64 = 1800.0;
-    
+
     let needs_splitting = duration_seconds > MAX_CHUNK_DURATION;
     let chunk_count = if needs_splitting {
         (duration_seconds / MAX_CHUNK_DURATION).ceil() as usize
@@ -92,7 +96,7 @@ pub async fn split_audio_into_chunks<P: AsRef<Path>>(
     meeting_id: &str,
 ) -> Result<Vec<AudioChunk>, String> {
     let audio_info = analyze_audio(&audio_path).await?;
-    
+
     if !audio_info.needs_splitting {
         // Return single chunk info for the original file
         return Ok(vec![AudioChunk {
@@ -116,8 +120,10 @@ pub async fn split_audio_into_chunks<P: AsRef<Path>>(
         let chunk_filename = format!("{}_chunk_{:02}.ogg", meeting_id, i);
         let chunk_path = output_dir.as_ref().join(&chunk_filename);
 
-        println!("Creating chunk {}: {:.2}s to {:.2}s ({:.2}s duration)", 
-                 i, start_time, end_time, chunk_duration);
+        println!(
+            "Creating chunk {}: {:.2}s to {:.2}s ({:.2}s duration)",
+            i, start_time, end_time, chunk_duration
+        );
 
         let output = Command::new("ffmpeg")
             .arg("-i")
@@ -200,4 +206,59 @@ pub async fn split_audio_into_chunks_command(
     let audio_path = base_dir.join(file_name);
 
     split_audio_into_chunks(audio_path, base_dir, meeting_id).await
+}
+
+/// Tauri command to convert user audio file to OGG format
+#[tauri::command]
+pub async fn convert_user_audio(app: AppHandle, audio_path: &str) -> Result<String, String> {
+    println!("Converting user audio file: {}", audio_path);
+
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let base_dir = app_dir.join("uploads");
+
+    // Check the user file exists
+    let audio_path = Path::new(audio_path);
+    if !audio_path.exists() {
+        return Err(format!(
+            "Audio file does not exist: {}",
+            audio_path.to_string_lossy()
+        ));
+    }
+
+    // Create New Meeting Directory
+    // This will be the directory where the audio file will be stored
+    //
+    // The meeting_id follows this format:
+    // const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    // const recordingName = `recording-${timestamp}`;
+    let meeting_id = format!(
+        "recording-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| format!("Failed to get current time: {}", e))?
+            .as_secs()
+    );
+    let meeting_dir = base_dir.join(&meeting_id);
+
+    std::fs::create_dir_all(&meeting_dir)
+        .map_err(|e| format!("Failed to create meeting directory: {}", e))?;
+
+    // Convert the audio file to OGG format
+    let output_file_name = format!("{}.ogg", meeting_id);
+    let output_path = meeting_dir.join(&output_file_name);
+    let output = Command::new("ffmpeg")
+        .arg("-i")
+        .arg(audio_path)
+        .arg("-c:a")
+        .arg("libvorbis") // Use OGG Vorbis codec
+        .arg("-y") // Overwrite output file if it exists
+        .arg(&output_path)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to execute ffmpeg: {}", e))?;
+
+    Ok(audio_path.to_string_lossy().to_string())
 }
