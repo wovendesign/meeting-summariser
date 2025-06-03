@@ -47,9 +47,10 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to create resource directory: {}", e))?;
 
+    app.emit("python-download-progress", "Starting Python download...")
+        .unwrap();
+
     let res = reqwest::get("https://github.com/astral-sh/python-build-standalone/releases/download/20250529/cpython-3.12.10+20250529-x86_64-unknown-linux-gnu-install_only.tar.gz").await;
-    // println!("{:?}", res.status()); // e.g. 200
-    // println!("{:?}", res.text().await); // e.g Ok("{ Content }")
 
     if res.is_err() {
         return Err(format!("Failed to download Python: {}", res.unwrap_err()));
@@ -58,6 +59,10 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
     if !response.status().is_success() {
         return Err(format!("Failed to download Python: {}", response.status()));
     }
+
+    app.emit("python-download-progress", "Downloading Python tarball...")
+        .unwrap();
+
     let tarball = response
         .bytes()
         .await
@@ -66,6 +71,9 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
     fs::write(&tarball_path, &tarball)
         .await
         .map_err(|e| format!("Failed to write Python tarball: {}", e))?;
+
+    app.emit("python-download-progress", "Extracting Python...")
+        .unwrap();
 
     // Extract the tarball
     let output = Command::new("tar")
@@ -84,6 +92,10 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
             stderr.trim()
         ));
     }
+
+    app.emit("python-download-progress", "Cleaning up...")
+        .unwrap();
+
     // Clean up the tarball
     fs::remove_file(&tarball_path)
         .await
@@ -91,6 +103,9 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
 
     // Ensure the extracted directory is executable
     let python_dir = resource_path.join("python");
+
+    app.emit("python-download-progress", "Setting permissions...")
+        .unwrap();
 
     let output = Command::new("chmod")
         .arg("-R")
@@ -108,6 +123,12 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
         ));
     }
 
+    app.emit(
+        "python-download-progress",
+        "Python installation completed successfully!",
+    )
+    .unwrap();
+
     Ok(())
 }
 
@@ -121,7 +142,10 @@ pub async fn check_whisperx_installation(app: AppHandle) -> Result<(), String> {
         .app_local_data_dir()
         .expect("Failed to get app local data directory");
     let resource_path = app_dir.join("python");
-    let lib_path = resource_path.join("lib").join("python3.12").join("site-packages");
+    let lib_path = resource_path
+        .join("lib")
+        .join("python3.12")
+        .join("site-packages");
 
     let output = Command::new(format!("{}/bin/python", resource_path.display()))
         .env("PYTHONPATH", &lib_path)
@@ -148,6 +172,13 @@ pub async fn download_whisperx(app: AppHandle) -> Result<(), String> {
     // Check if Python is installed
     check_python_installation(app.clone()).await?;
 
+    // Emit start event
+    app.emit(
+        "whisperx-download-progress",
+        "Starting WhisperX download...",
+    )
+    .unwrap();
+
     // Get python resource path
     let app_dir = app
         .path()
@@ -156,31 +187,85 @@ pub async fn download_whisperx(app: AppHandle) -> Result<(), String> {
     let resource_path = app_dir.join("python");
 
     // Ensure the lib directory exists for packages
-    let lib_path = resource_path.join("lib").join("python3.12").join("site-packages");
+    let lib_path = resource_path
+        .join("lib")
+        .join("python3.12")
+        .join("site-packages");
     fs::create_dir_all(&lib_path)
         .await
         .map_err(|e| format!("Failed to create lib directory: {}", e))?;
 
-    // Download the whisperx package with dependencies
-    let output = Command::new(format!("{}/bin/python", resource_path.display()))
+    app.emit(
+        "whisperx-download-progress",
+        "Installing WhisperX and dependencies...",
+    )
+    .unwrap();
+
+    // Spawn pip install process with piped output for progress tracking
+    let mut child = Command::new(format!("{}/bin/python", resource_path.display()))
         .arg("-m")
         .arg("pip")
         .arg("install")
         .arg("--target")
         .arg(&lib_path)
+        .arg("--verbose")
         .arg("whisperx")
-        .output()
-        .await
-        .map_err(|e| format!("Failed to execute pip install: {}", e))?;
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn pip install: {}", e))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "Failed to install whisperx: {}",
-            stderr.trim()
-        ));
+    // Read and emit progress from both stdout and stderr
+    let stdout = child.stdout.take().expect("Failed to take stdout");
+    let stderr = child.stderr.take().expect("Failed to take stderr");
+
+    let app_clone = app.clone();
+    let stdout_task = tokio::spawn(async move {
+        let mut lines = BufReader::new(stdout).lines();
+        while let Some(line) = lines.next_line().await.unwrap_or(None) {
+            if line.contains("Downloading")
+                || line.contains("Installing")
+                || line.contains("Successfully")
+            {
+                app_clone.emit("whisperx-download-progress", &line).unwrap();
+            }
+        }
+    });
+
+    let app_clone2 = app.clone();
+    let stderr_task = tokio::spawn(async move {
+        let mut lines = BufReader::new(stderr).lines();
+        while let Some(line) = lines.next_line().await.unwrap_or(None) {
+            if line.contains("Downloading")
+                || line.contains("Installing")
+                || line.contains("Successfully")
+            {
+                app_clone2
+                    .emit("whisperx-download-progress", &line)
+                    .unwrap();
+            }
+        }
+    });
+
+    // Wait for all tasks to complete
+    let _ = tokio::try_join!(stdout_task, stderr_task);
+
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("Failed to wait on pip install: {}", e))?;
+
+    if !status.success() {
+        app.emit("whisperx-download-progress", "Installation failed")
+            .unwrap();
+        return Err("Failed to install whisperx".to_string());
     }
 
+    app.emit(
+        "whisperx-download-progress",
+        "WhisperX installation completed successfully!",
+    )
+    .unwrap();
     Ok(())
 }
 
@@ -204,7 +289,8 @@ pub async fn transcribe(
     // Modify the state:
     state.currently_transcribing = Some(meeting_id.to_string());
 
-    app.emit(meeting_id, "transcription-started").unwrap();    let app_dir = app
+    app.emit(meeting_id, "transcription-started").unwrap();
+    let app_dir = app
         .path()
         .app_local_data_dir()
         .expect("Failed to get app local data directory");
@@ -215,7 +301,10 @@ pub async fn transcribe(
     println!("Uploading to {}", audio_path.display());
 
     let resource_path = app_dir.join("python");
-    let lib_path = resource_path.join("lib").join("python3.12").join("site-packages");
+    let lib_path = resource_path
+        .join("lib")
+        .join("python3.12")
+        .join("site-packages");
 
     println!("{:?}", resource_path);
 
@@ -233,7 +322,7 @@ pub async fn transcribe(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to spawn whisperx: {}", e))?;    // Pipe and read stderr concurrently (uvx logs may come here)
+        .map_err(|e| format!("Failed to spawn whisperx: {}", e))?; // Pipe and read stderr concurrently (uvx logs may come here)
     let stderr = child.stderr.take().expect("Failed to take stderr");
     let stderr_task = tokio::spawn(async move {
         let mut errs = BufReader::new(stderr).lines();
@@ -364,7 +453,7 @@ pub async fn transcribe_with_chunking(
         println!("Transcribing chunk {} of {}", i + 1, chunks.len());
 
         let chunk_path = std::path::Path::new(&chunk.file_path);
-        let chunk_dir = chunk_path.parent().unwrap();        // Run whisperx on this chunk
+        let chunk_dir = chunk_path.parent().unwrap(); // Run whisperx on this chunk
         let result = transcribe_single_chunk(&app, chunk_path, chunk_dir).await;
 
         match result {
@@ -438,7 +527,10 @@ async fn transcribe_single_chunk(
         .app_local_data_dir()
         .expect("Failed to get app local data directory");
     let resource_path = app_dir.join("python");
-    let lib_path = resource_path.join("lib").join("python3.12").join("site-packages");
+    let lib_path = resource_path
+        .join("lib")
+        .join("python3.12")
+        .join("site-packages");
 
     let output = Command::new(format!("{}/bin/python", resource_path.display()))
         .env("PYTHONPATH", &lib_path)
