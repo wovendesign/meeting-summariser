@@ -10,49 +10,66 @@ use tokio::sync::Mutex;
 
 /// Detects the current platform and returns the appropriate Python download URL
 fn get_python_download_url() -> Result<String, String> {
-    let base_url = "https://github.com/astral-sh/python-build-standalone/releases/download/20250529";
-    
+    let base_url =
+        "https://github.com/astral-sh/python-build-standalone/releases/download/20250529";
+
     // Detect OS
     let os = std::env::consts::OS;
-    
+
     // Detect architecture
     let arch = std::env::consts::ARCH;
-    
+
     let filename = match (os, arch) {
         // Linux x86_64
-        ("linux", "x86_64") => "cpython-3.12.10+20250529-x86_64-unknown-linux-gnu-install_only.tar.gz",
-        
+        ("linux", "x86_64") => {
+            "cpython-3.12.10+20250529-x86_64-unknown-linux-gnu-install_only.tar.gz"
+        }
+
         // Linux aarch64 (ARM64)
-        ("linux", "aarch64") => "cpython-3.12.10+20250529-aarch64-unknown-linux-gnu-install_only.tar.gz",
-        
+        ("linux", "aarch64") => {
+            "cpython-3.12.10+20250529-aarch64-unknown-linux-gnu-install_only.tar.gz"
+        }
+
         // macOS x86_64 (Intel)
         ("macos", "x86_64") => "cpython-3.12.10+20250529-x86_64-apple-darwin-install_only.tar.gz",
-        
+
         // macOS aarch64 (Apple Silicon)
         ("macos", "aarch64") => "cpython-3.12.10+20250529-aarch64-apple-darwin-install_only.tar.gz",
-        
+
         // Windows x86_64
-        ("windows", "x86_64") => "cpython-3.12.10+20250529-x86_64-pc-windows-msvc-install_only.tar.gz",
-        
+        ("windows", "x86_64") => {
+            "cpython-3.12.10+20250529-x86_64-pc-windows-msvc-install_only.tar.gz"
+        }
+
         // Windows x86 (32-bit)
         ("windows", "x86") => "cpython-3.12.10+20250529-i686-pc-windows-msvc-install_only.tar.gz",
-        
+
         // Additional Linux architectures
-        ("linux", "arm") => "cpython-3.12.10+20250529-armv7-unknown-linux-gnueabihf-install_only.tar.gz",
-        ("linux", "powerpc64") => "cpython-3.12.10+20250529-ppc64le-unknown-linux-gnu-install_only.tar.gz",
-        ("linux", "riscv64") => "cpython-3.12.10+20250529-riscv64-unknown-linux-gnu-install_only.tar.gz",
-        ("linux", "s390x") => "cpython-3.12.10+20250529-s390x-unknown-linux-gnu-install_only.tar.gz",
-        
+        ("linux", "arm") => {
+            "cpython-3.12.10+20250529-armv7-unknown-linux-gnueabihf-install_only.tar.gz"
+        }
+        ("linux", "powerpc64") => {
+            "cpython-3.12.10+20250529-ppc64le-unknown-linux-gnu-install_only.tar.gz"
+        }
+        ("linux", "riscv64") => {
+            "cpython-3.12.10+20250529-riscv64-unknown-linux-gnu-install_only.tar.gz"
+        }
+        ("linux", "s390x") => {
+            "cpython-3.12.10+20250529-s390x-unknown-linux-gnu-install_only.tar.gz"
+        }
+
         // Unsupported combination
-        _ => return Err(format!(
-            "Unsupported platform: {} on {}. Supported platforms are:\n\
+        _ => {
+            return Err(format!(
+                "Unsupported platform: {} on {}. Supported platforms are:\n\
             - Linux: x86_64, aarch64, arm, powerpc64, riscv64, s390x\n\
             - macOS: x86_64, aarch64\n\
             - Windows: x86_64, x86",
-            arch, os
-        )),
+                arch, os
+            ))
+        }
     };
-    
+
     Ok(format!("{}/{}", base_url, filename))
 }
 
@@ -75,7 +92,7 @@ pub async fn check_python_installation(app: AppHandle) -> Result<(), String> {
     let resource_path = app_dir.join("python");
 
     let python_exe = get_python_executable_path(&resource_path);
-    
+
     let output = Command::new(&python_exe)
         .arg("--version")
         .output()
@@ -106,14 +123,20 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to create resource directory: {}", e))?;
 
-    app.emit("python-download-progress", "Detecting platform and selecting Python version...")
-        .unwrap();
+    app.emit(
+        "python-download-progress",
+        "Detecting platform and selecting Python version...",
+    )
+    .unwrap();
 
     // Get the appropriate download URL for this platform
     let download_url = get_python_download_url()?;
-    
-    app.emit("python-download-progress", &format!("Downloading Python from: {}", download_url))
-        .unwrap();
+
+    app.emit(
+        "python-download-progress",
+        &format!("Downloading Python from: {}", download_url),
+    )
+    .unwrap();
 
     let res = reqwest::get(&download_url).await;
 
@@ -132,14 +155,14 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
         .bytes()
         .await
         .map_err(|e| format!("Failed to read Python tarball bytes: {}", e))?;
-    
+
     // Determine file extension based on URL
     let file_extension = if download_url.ends_with(".tar.gz") {
         "python.tar.gz"
     } else {
         "python.tar.zst"
     };
-    
+
     let tarball_path = resource_path.join(file_extension);
     fs::write(&tarball_path, &tarball)
         .await
@@ -169,8 +192,7 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
             .await
     };
 
-    let output = extract_result
-        .map_err(|e| format!("Failed to extract Python tarball: {}", e))?;
+    let output = extract_result.map_err(|e| format!("Failed to extract Python tarball: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -234,7 +256,8 @@ pub async fn check_whisperx_installation(app: AppHandle) -> Result<(), String> {
     let lib_path = resource_path
         .join("lib")
         .join("python3.12")
-        .join("site-packages");    let python_exe = get_python_executable_path(&resource_path);
+        .join("site-packages");
+    let python_exe = get_python_executable_path(&resource_path);
     let output = Command::new(&python_exe)
         .env("PYTHONPATH", &lib_path)
         .arg("-m")
@@ -287,7 +310,7 @@ pub async fn download_whisperx(app: AppHandle) -> Result<(), String> {
         "whisperx-download-progress",
         "Installing WhisperX and dependencies...",
     )
-    .unwrap();    // Spawn pip install process with piped output for progress tracking
+    .unwrap(); // Spawn pip install process with piped output for progress tracking
     let python_exe = get_python_executable_path(&resource_path);
     let mut child = Command::new(&python_exe)
         .arg("-m")
@@ -391,15 +414,16 @@ pub async fn transcribe(
     let lib_path = resource_path
         .join("lib")
         .join("python3.12")
-        .join("site-packages");    println!("{:?}", resource_path);
-
-    // Spawn whisperx process with piped stdout and inherited stderr
+        .join("site-packages");
+    println!("{:?}", resource_path); // Spawn whisperx process with piped stdout and inherited stderr
     let python_exe = get_python_executable_path(&resource_path);
     let mut child = Command::new(&python_exe)
         .env("PYTHONPATH", &lib_path)
         .arg("-m")
         .arg("whisperx")
         .arg(&audio_path)
+        .arg("--device")
+        .arg("cpu")
         .arg("--compute_type")
         .arg("int8")
         .arg("--diarize")
@@ -615,19 +639,23 @@ async fn transcribe_single_chunk(
     let resource_path = app_dir.join("python");
     let lib_path = resource_path
         .join("lib")
-        .join("python3.12")        .join("site-packages");
-
+        .join("python3.12")
+        .join("site-packages");
     let python_exe = get_python_executable_path(&resource_path);
     let output = Command::new(&python_exe)
         .env("PYTHONPATH", &lib_path)
         .arg("-m")
         .arg("whisperx")
         .arg(audio_path)
-        .arg("--compute_type")
-        .arg("int8")
+        // .arg("--device")
+        // .arg("cpu")
+        // .arg("--compute_type")
+        // .arg("int8")
         .arg("--diarize")
         .arg("--output_dir")
         .arg(output_dir)
+        .arg("--hf_token")
+        .arg("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")
         .output()
         .await
         .map_err(|e| format!("Failed to execute whisperx: {}", e))?;
