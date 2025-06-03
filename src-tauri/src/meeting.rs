@@ -1,9 +1,5 @@
 use std::collections::HashMap;
-use tauri::{AppHandle, Emitter, Manager, State};
-
-struct Names {
-
-}
+use tauri::{AppHandle, Manager};
 
 #[tauri::command]
 pub async fn save_speaker_names(app: AppHandle, meeting_id: &str, names: HashMap<String, String>) -> Result<(), String> {

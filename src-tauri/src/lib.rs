@@ -184,8 +184,13 @@ pub fn run() {
             whisperx::check_python_installation,
             whisperx::check_whisperx_installation,
             whisperx::transcribe,
+            whisperx::transcribe_with_chunking,
             whisperx::is_transcribing,
-            meeting::save_speaker_names
+            meeting::save_speaker_names,
+            audio::check_ffmpeg_installation_command,
+            audio::get_audio_duration_command,
+            audio::analyze_audio_command,
+            audio::split_audio_into_chunks_command
         ])
         .setup(|app| {
             app.manage(Mutex::new(AppState::default()));

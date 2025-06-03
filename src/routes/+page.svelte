@@ -14,6 +14,12 @@
   import { onMount } from "svelte";
   import { FlexRender } from "$lib/components/ui/data-table/index.js";
 
+  import FileDrop from "svelte-tauri-filedrop";
+
+  function open(paths: string[]) {
+    // ...
+  }
+
   let meetings: {
     id: string;
     name: string | null;
@@ -137,4 +143,20 @@
       </div>
     </Card.Content>
   </Card.Root>
+  <FileDrop extensions={["json"]} handleFiles={open} let:files>
+    <div class="dropzone" class:droppable={files.length > 0}>
+      <h2>Drop JSON files</h2>
+    </div>
+  </FileDrop>
 </div>
+
+<style>
+  .dropzone {
+    margin: 20px;
+    padding: 20px;
+    background: #eee;
+  }
+  .droppable {
+    background: #d6dff0;
+  }
+</style>

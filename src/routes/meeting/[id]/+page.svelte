@@ -38,6 +38,8 @@
   let isTranscribing: String | null = $state(null);
   let isSummarizing: String | null = $state(null);
 
+  import { readFile, BaseDirectory } from "@tauri-apps/plugin-fs";
+
   let meetingMetadata: {
     name?: string;
   } = $state({});
@@ -48,10 +50,11 @@
     }
   });
 
-  let audio: ArrayBuffer | null = $state(null);
+  let audio: Uint8Array | null = $state(null);
   let audioURL = $derived.by(() => {
     if (!audio) return "";
-    const blob = new Blob([audio], { type: "audio/wav" });
+    console.log(audio);
+    const blob = new Blob([audio], { type: "audio/ogg" });
     return URL.createObjectURL(blob);
   });
 
@@ -182,7 +185,7 @@
       }
 
       // When the transcribe function settles without an error, retry fetching the transcript, otherwise show a toast error
-      invoke("transcribe", { meetingId: data.id })
+      invoke("transcribe_with_chunking", { meetingId: data.id })
         .then(() => {
           console.log("Transcription finished successfully");
           getTranscript();
@@ -200,7 +203,7 @@
   }
 
   async function transcribe() {
-    invoke("transcribe", { meetingId: data.id })
+    invoke("transcribe_with_chunking", { meetingId: data.id })
       .then(() => {
         getTranscript();
         getTranscriptJson();
@@ -245,7 +248,11 @@
 
   async function getAudio() {
     try {
-      audio = await invoke("get_meeting_audio", { meetingId: data.id });
+      // audio = await invoke("get_meeting_audio", { meetingId: data.id });
+      const icon = await readFile(`uploads/${data.id}/${data.id}.ogg`, {
+        baseDir: BaseDirectory.AppLocalData,
+      });
+      audio = icon;
     } catch (error) {
       console.error("Error fetching audio:", error);
       audio = null;

@@ -17,6 +17,14 @@
         }
       ]
     },
+    {
+      "identifier": "fs:read-all",
+      "allow": [
+        {
+          "path": "$APPLOCALDATA/**"
+        }
+      ]
+    },
     "opener:default"
   ]
 }

@@ -23,6 +23,7 @@
     "npm:prettier@^3.4.2": "3.5.3",
     "npm:svelte-check@4": "4.2.1_svelte@5.33.3__acorn@8.14.1_typescript@5.6.3",
     "npm:svelte-sonner@^1.0.3": "1.0.3_svelte@5.33.3__acorn@8.14.1",
+    "npm:svelte-tauri-filedrop@^2.0.2": "2.0.2_svelte@5.33.3__acorn@8.14.1",
     "npm:svelte@5": "5.33.3_acorn@8.14.1",
     "npm:tailwind-merge@^3.3.0": "3.3.0",
     "npm:tailwind-variants@1": "1.0.0_tailwindcss@4.1.7",
@@ -1034,6 +1035,12 @@
         "svelte"
       ]
     },
+    "svelte-tauri-filedrop@2.0.2_svelte@5.33.3__acorn@8.14.1": {
+      "integrity": "sha512-1NT63VUPHPRtyxpLhyuWl8XHm7eB6+5uCm7WrD4qslHftPQIL6Q0urIqk0DpsSo6bsRuwTPIf2DynbTqSsZMOg==",
+      "dependencies": [
+        "svelte"
+      ]
+    },
     "svelte-toolbelt@0.9.1_svelte@5.33.3__acorn@8.14.1": {
       "integrity": "sha512-wBX6MtYw/kpht80j5zLpxJyR9soLizXPIAIWEVd9llAi17SR44ZdG291bldjB7r/K5duC0opDFcuhk2cA1hb8g==",
       "dependencies": [
@@ -1189,6 +1196,7 @@
         "npm:prettier@^3.4.2",
         "npm:svelte-check@4",
         "npm:svelte-sonner@^1.0.3",
+        "npm:svelte-tauri-filedrop@^2.0.2",
         "npm:svelte@5",
         "npm:tailwind-merge@^3.3.0",
         "npm:tailwind-variants@1",
