@@ -13,6 +13,24 @@ mod whisperx;
 struct AppState {
     currently_transcribing: Option<String>,
     currently_summarizing: Option<String>,
+    llm_config: LlmConfig,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct LlmConfig {
+    use_external_api: bool,
+    external_endpoint: String,
+    external_model: String,
+}
+
+impl Default for LlmConfig {
+    fn default() -> Self {
+        Self {
+            use_external_api: true, // Try external first
+            external_endpoint: "http://localhost:11434/v1".to_string(),
+            external_model: "llama3".to_string(),
+        }
+    }
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -113,6 +131,30 @@ async fn get_meeting_transcript_json(app: AppHandle, meeting_id: &str) -> Result
 }
 
 #[tauri::command]
+async fn get_llm_config(app: AppHandle) -> Result<LlmConfig, String> {
+    let state = app.state::<Mutex<AppState>>();
+    let state = state.lock().await;
+    Ok(state.llm_config.clone())
+}
+
+#[tauri::command]
+async fn set_llm_config(
+    app: AppHandle,
+    use_external_api: bool,
+    external_endpoint: String,
+    external_model: String,
+) -> Result<(), String> {
+    let state = app.state::<Mutex<AppState>>();
+    let mut state = state.lock().await;
+    state.llm_config = LlmConfig {
+        use_external_api,
+        external_endpoint,
+        external_model,
+    };
+    Ok(())
+}
+
+#[tauri::command]
 async fn get_meeting_metadata(app: AppHandle, meeting_id: &str) -> Result<MeetingMetadata, String> {
     // resolve <app>/uploads/<meeting_id>/meeting.json
     let app_dir = app
@@ -175,9 +217,9 @@ pub fn run() {
             get_meeting_transcript_json,
             get_meeting_metadata,
             llm::get_meeting_summary,
-            llm::generate_meeting_name,
-            llm::generate_summary,
+            llm::generate_meeting_name,            llm::generate_summary,
             llm::is_summarizing,
+            llm::test_llm_connection,
             whisperx::check_python_installation,
             whisperx::check_whisperx_installation,
             whisperx::transcribe,
@@ -190,7 +232,9 @@ pub fn run() {
             audio::get_audio_duration_command,
             audio::analyze_audio_command,
             audio::split_audio_into_chunks_command,
-            audio::convert_user_audio
+            audio::convert_user_audio,
+            get_llm_config,
+            set_llm_config
         ])
         .setup(|app| {
             app.manage(Mutex::new(AppState::default()));
