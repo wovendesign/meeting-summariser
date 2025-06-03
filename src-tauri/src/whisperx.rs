@@ -8,6 +8,63 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
+/// Detects the current platform and returns the appropriate Python download URL
+fn get_python_download_url() -> Result<String, String> {
+    let base_url = "https://github.com/astral-sh/python-build-standalone/releases/download/20250529";
+    
+    // Detect OS
+    let os = std::env::consts::OS;
+    
+    // Detect architecture
+    let arch = std::env::consts::ARCH;
+    
+    let filename = match (os, arch) {
+        // Linux x86_64
+        ("linux", "x86_64") => "cpython-3.12.10+20250529-x86_64-unknown-linux-gnu-install_only.tar.gz",
+        
+        // Linux aarch64 (ARM64)
+        ("linux", "aarch64") => "cpython-3.12.10+20250529-aarch64-unknown-linux-gnu-install_only.tar.gz",
+        
+        // macOS x86_64 (Intel)
+        ("macos", "x86_64") => "cpython-3.12.10+20250529-x86_64-apple-darwin-install_only.tar.gz",
+        
+        // macOS aarch64 (Apple Silicon)
+        ("macos", "aarch64") => "cpython-3.12.10+20250529-aarch64-apple-darwin-install_only.tar.gz",
+        
+        // Windows x86_64
+        ("windows", "x86_64") => "cpython-3.12.10+20250529-x86_64-pc-windows-msvc-install_only.tar.gz",
+        
+        // Windows x86 (32-bit)
+        ("windows", "x86") => "cpython-3.12.10+20250529-i686-pc-windows-msvc-install_only.tar.gz",
+        
+        // Additional Linux architectures
+        ("linux", "arm") => "cpython-3.12.10+20250529-armv7-unknown-linux-gnueabihf-install_only.tar.gz",
+        ("linux", "powerpc64") => "cpython-3.12.10+20250529-ppc64le-unknown-linux-gnu-install_only.tar.gz",
+        ("linux", "riscv64") => "cpython-3.12.10+20250529-riscv64-unknown-linux-gnu-install_only.tar.gz",
+        ("linux", "s390x") => "cpython-3.12.10+20250529-s390x-unknown-linux-gnu-install_only.tar.gz",
+        
+        // Unsupported combination
+        _ => return Err(format!(
+            "Unsupported platform: {} on {}. Supported platforms are:\n\
+            - Linux: x86_64, aarch64, arm, powerpc64, riscv64, s390x\n\
+            - macOS: x86_64, aarch64\n\
+            - Windows: x86_64, x86",
+            arch, os
+        )),
+    };
+    
+    Ok(format!("{}/{}", base_url, filename))
+}
+
+/// Gets the Python executable path based on the platform
+fn get_python_executable_path(python_dir: &std::path::Path) -> String {
+    if cfg!(windows) {
+        format!("{}/python.exe", python_dir.display())
+    } else {
+        format!("{}/bin/python3", python_dir.display())
+    }
+}
+
 #[tauri::command]
 pub async fn check_python_installation(app: AppHandle) -> Result<(), String> {
     // Check if Python is installed
@@ -17,7 +74,9 @@ pub async fn check_python_installation(app: AppHandle) -> Result<(), String> {
         .expect("Failed to get app local data directory");
     let resource_path = app_dir.join("python");
 
-    let output = Command::new(format!("{}/bin/python3", resource_path.display()))
+    let python_exe = get_python_executable_path(&resource_path);
+    
+    let output = Command::new(&python_exe)
         .arg("--version")
         .output()
         .await
@@ -47,10 +106,16 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to create resource directory: {}", e))?;
 
-    app.emit("python-download-progress", "Starting Python download...")
+    app.emit("python-download-progress", "Detecting platform and selecting Python version...")
         .unwrap();
 
-    let res = reqwest::get("https://github.com/astral-sh/python-build-standalone/releases/download/20250529/cpython-3.12.10+20250529-x86_64-unknown-linux-gnu-install_only.tar.gz").await;
+    // Get the appropriate download URL for this platform
+    let download_url = get_python_download_url()?;
+    
+    app.emit("python-download-progress", &format!("Downloading Python from: {}", download_url))
+        .unwrap();
+
+    let res = reqwest::get(&download_url).await;
 
     if res.is_err() {
         return Err(format!("Failed to download Python: {}", res.unwrap_err()));
@@ -67,7 +132,15 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
         .bytes()
         .await
         .map_err(|e| format!("Failed to read Python tarball bytes: {}", e))?;
-    let tarball_path = resource_path.join("python.tar.gz");
+    
+    // Determine file extension based on URL
+    let file_extension = if download_url.ends_with(".tar.gz") {
+        "python.tar.gz"
+    } else {
+        "python.tar.zst"
+    };
+    
+    let tarball_path = resource_path.join(file_extension);
     fs::write(&tarball_path, &tarball)
         .await
         .map_err(|e| format!("Failed to write Python tarball: {}", e))?;
@@ -75,14 +148,28 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
     app.emit("python-download-progress", "Extracting Python...")
         .unwrap();
 
-    // Extract the tarball
-    let output = Command::new("tar")
-        .arg("-xzf")
-        .arg(&tarball_path)
-        .arg("-C")
-        .arg(&resource_path)
-        .output()
-        .await
+    // Extract the tarball - use appropriate command based on file type
+    let extract_result = if download_url.ends_with(".tar.gz") {
+        Command::new("tar")
+            .arg("-xzf")
+            .arg(&tarball_path)
+            .arg("-C")
+            .arg(&resource_path)
+            .output()
+            .await
+    } else {
+        // For .tar.zst files, use tar with zstd support
+        Command::new("tar")
+            .arg("--use-compress-program=zstd")
+            .arg("-xf")
+            .arg(&tarball_path)
+            .arg("-C")
+            .arg(&resource_path)
+            .output()
+            .await
+    };
+
+    let output = extract_result
         .map_err(|e| format!("Failed to extract Python tarball: {}", e))?;
 
     if !output.status.success() {
@@ -101,26 +188,28 @@ pub async fn download_python(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to remove Python tarball: {}", e))?;
 
-    // Ensure the extracted directory is executable
-    let python_dir = resource_path.join("python");
+    // Set permissions (Unix-like systems only)
+    if cfg!(unix) {
+        let python_dir = resource_path.join("python");
 
-    app.emit("python-download-progress", "Setting permissions...")
-        .unwrap();
+        app.emit("python-download-progress", "Setting permissions...")
+            .unwrap();
 
-    let output = Command::new("chmod")
-        .arg("-R")
-        .arg("755")
-        .arg(&python_dir)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to set permissions on Python directory: {}", e))?;
+        let output = Command::new("chmod")
+            .arg("-R")
+            .arg("755")
+            .arg(&python_dir)
+            .output()
+            .await
+            .map_err(|e| format!("Failed to set permissions on Python directory: {}", e))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "Failed to set permissions on Python directory: {}",
-            stderr.trim()
-        ));
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "Failed to set permissions on Python directory: {}",
+                stderr.trim()
+            ));
+        }
     }
 
     app.emit(
@@ -145,9 +234,8 @@ pub async fn check_whisperx_installation(app: AppHandle) -> Result<(), String> {
     let lib_path = resource_path
         .join("lib")
         .join("python3.12")
-        .join("site-packages");
-
-    let output = Command::new(format!("{}/bin/python", resource_path.display()))
+        .join("site-packages");    let python_exe = get_python_executable_path(&resource_path);
+    let output = Command::new(&python_exe)
         .env("PYTHONPATH", &lib_path)
         .arg("-m")
         .arg("whisperx")
@@ -199,10 +287,9 @@ pub async fn download_whisperx(app: AppHandle) -> Result<(), String> {
         "whisperx-download-progress",
         "Installing WhisperX and dependencies...",
     )
-    .unwrap();
-
-    // Spawn pip install process with piped output for progress tracking
-    let mut child = Command::new(format!("{}/bin/python", resource_path.display()))
+    .unwrap();    // Spawn pip install process with piped output for progress tracking
+    let python_exe = get_python_executable_path(&resource_path);
+    let mut child = Command::new(&python_exe)
         .arg("-m")
         .arg("pip")
         .arg("install")
@@ -304,12 +391,11 @@ pub async fn transcribe(
     let lib_path = resource_path
         .join("lib")
         .join("python3.12")
-        .join("site-packages");
-
-    println!("{:?}", resource_path);
+        .join("site-packages");    println!("{:?}", resource_path);
 
     // Spawn whisperx process with piped stdout and inherited stderr
-    let mut child = Command::new(format!("{}/bin/python", resource_path.display()))
+    let python_exe = get_python_executable_path(&resource_path);
+    let mut child = Command::new(&python_exe)
         .env("PYTHONPATH", &lib_path)
         .arg("-m")
         .arg("whisperx")
@@ -529,10 +615,10 @@ async fn transcribe_single_chunk(
     let resource_path = app_dir.join("python");
     let lib_path = resource_path
         .join("lib")
-        .join("python3.12")
-        .join("site-packages");
+        .join("python3.12")        .join("site-packages");
 
-    let output = Command::new(format!("{}/bin/python", resource_path.display()))
+    let python_exe = get_python_executable_path(&resource_path);
+    let output = Command::new(&python_exe)
         .env("PYTHONPATH", &lib_path)
         .arg("-m")
         .arg("whisperx")
