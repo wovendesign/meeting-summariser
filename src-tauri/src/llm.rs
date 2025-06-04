@@ -1,3 +1,4 @@
+use std::io::Write;
 use crate::{get_meeting_transcript, AppState, LlmConfig, MeetingMetadata};
 use kalosm::language::*;
 use openai_api_rs::v1::api::OpenAIClient;
@@ -12,16 +13,17 @@ async fn generate_text_with_llm(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String, String> {
-    let state = app.state::<Mutex<AppState>>();
-    let config = {
-        let state = state.lock().await;
-        state.llm_config.clone()
-    };
+    println!("Generating text with llm");
+    // let state = app.state::<Mutex<AppState>>();
+    // let config = {
+    //     let state = state.lock().await;
+    //     state.llm_config.clone()
+    // };
 
     // Try external API first if enabled
-    if config.use_external_api {
+    if true {
         app.emit("llm-progress", "Trying external API...").unwrap();
-        match try_external_api(&config, system_prompt, user_prompt).await {
+        match try_external_api(system_prompt, user_prompt).await {
             Ok(response) => {
                 app.emit("llm-progress", "External API successful").unwrap();
                 return Ok(response);
@@ -40,17 +42,18 @@ async fn generate_text_with_llm(
 }
 
 async fn try_external_api(
-    config: &crate::LlmConfig,
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String, String> {
     let mut client = OpenAIClient::builder()
-        .with_endpoint(&config.external_endpoint)
+        .with_endpoint("http://localhost:11434/v1")
         .build()
         .map_err(|e| e.to_string())?;
+    
+    println!("trying external ollama");
 
     let req = ChatCompletionRequest::new(
-        config.external_model.clone(),
+        "llama3".to_string(),
         vec![
             chat_completion::ChatCompletionMessage {
                 role: chat_completion::MessageRole::system,
@@ -81,40 +84,64 @@ async fn try_external_api(
         .ok_or_else(|| "No content returned from external API".to_string())
 }
 
-async fn try_kalosm(app: AppHandle, system_prompt: &str, user_prompt: &str) -> Result<String, String> {
+async fn try_kalosm(
+    app: AppHandle,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String, String> {
     use kalosm::language::*;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::timeout;
 
-    app.emit("llm-progress", "Initializing Kalosm model...").unwrap();
-    
-    // Add timeout for model loading to prevent infinite hang
-    let model_result = timeout(Duration::from_secs(300), async {
-        app.emit("llm-progress", "Downloading model if needed (this may take a few minutes for first use)...").unwrap();
-        
-        // Try to load the model with progress tracking
-        let model = Llama::phi_3()
-            .await
-            .map_err(|e| format!("Failed to load Kalosm model: {}", e))?;
-        
-        app.emit("llm-progress", "Model loaded successfully!").unwrap();
-        Ok::<Llama, String>(model)
-    }).await;
+    println!("Starting kalosm...");
 
-    let model = match model_result {
-        Ok(Ok(model)) => model,
-        Ok(Err(e)) => return Err(e),
-        Err(_) => return Err("Model loading timed out after 5 minutes. This may indicate a network issue or the model is too large for your system.".to_string()),
-    };
+    app.emit("llm-progress", "Initializing Kalosm model...")
+        .unwrap();
 
-    app.emit("llm-progress", "Preparing chat session...").unwrap();
+    println!("Downloading Kalosm model...\n");
+
+    // Clone app handle for use in the closure
+    let app_clone = app.clone();
+
+    // Try to load the model with progress tracking
+    let model = Llama::builder()
+        .with_source(LlamaSource::llama_3_2_1b_chat())
+        .build_with_loading_handler(|progress| match progress {
+            ModelLoadingProgress::Downloading { source, progress } => {
+                // progress.progress is already a fraction between 0 and 1
+                let percentage = progress.progress / progress.size;
+                let elapsed = progress.start_time.elapsed().as_secs_f32();
+                let message = format!("Downloading model: {}%", percentage);
+                print!("\rDownloading the model ({}%) MBs Downloaded: {}", percentage, progress.progress / 1000000);
+                std::io::stdout().flush().expect("TODO: panic message");
+                // println!("Downloading file {source} {percentage}% ({elapsed:.1}s)");
+            }
+            ModelLoadingProgress::Loading { progress } => {
+                // progress is already a fraction between 0 and 1
+                let progress_percent = (progress * 100.0).clamp(0.0, 100.0) as u32;
+                let message = format!("Loading model: {}%", progress_percent);
+                println!("Loading model {progress_percent}%");
+            }
+        })
+        .await
+        .map_err(|e| format!("Failed to load Kalosm model: {}", e))?;
+
+    // Signal completion of model loading
+    app.emit("llm-download-progress", 100).unwrap();
+    app.emit("llm-loading-progress", 100).unwrap();
+    app.emit(
+        "llm-progress",
+        "Model loaded successfully! Preparing chat session...",
+    )
+    .unwrap();
+    println!("Preparing chat session with Kalosm model...");
 
     // Generate response with timeout
     let response_result = timeout(Duration::from_secs(120), async {
         app.emit("llm-progress", "Generating response...").unwrap();
-        
-        let mut chat = model.chat();
+
+        let chat = model.chat();
 
         let response = chat
             .with_system_prompt(system_prompt)
@@ -122,9 +149,11 @@ async fn try_kalosm(app: AppHandle, system_prompt: &str, user_prompt: &str) -> R
             .await
             .map_err(|e| e.to_string())?;
 
-        app.emit("llm-progress", "Response generated successfully!").unwrap();
+        app.emit("llm-progress", "Response generated successfully!")
+            .unwrap();
         Ok::<String, String>(response)
-    }).await;
+    })
+    .await;
 
     match response_result {
         Ok(Ok(response)) => Ok(response),
@@ -249,18 +278,24 @@ pub async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<S
 pub async fn test_llm_connection(app: AppHandle) -> Result<String, String> {
     let test_system_prompt = "You are a helpful assistant. Respond concisely.";
     let test_user_prompt = "Say 'Hello! LLM test successful.' and nothing else.";
-    
-    app.emit("llm-progress", "Starting LLM connection test...").unwrap();
-    
+
+    app.emit("llm-progress", "Starting LLM connection test...")
+        .unwrap();
+    // Reset progress indicators
+    app.emit("llm-download-progress", 0).unwrap();
+    app.emit("llm-loading-progress", 0).unwrap();
+
     let result = generate_text_with_llm(app.clone(), test_system_prompt, test_user_prompt).await;
-    
+
     match result {
         Ok(response) => {
-            app.emit("llm-progress", "LLM test completed successfully!").unwrap();
+            app.emit("llm-progress", "LLM test completed successfully!")
+                .unwrap();
             Ok(format!("Test successful! Response: {}", response.trim()))
         }
         Err(e) => {
-            app.emit("llm-progress", &format!("LLM test failed: {}", e)).unwrap();
+            app.emit("llm-progress", &format!("LLM test failed: {}", e))
+                .unwrap();
             Err(format!("Test failed: {}", e))
         }
     }

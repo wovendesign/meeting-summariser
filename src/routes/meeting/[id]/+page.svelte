@@ -1,11 +1,11 @@
 <script lang="ts">
   import SpeakerNaming from "$lib/components/SpeakerNaming.svelte";
   import Clipboard from "@lucide/svelte/icons/clipboard";
+  import type { PageProps } from "./$types";
 
   let { data }: PageProps = $props();
 
   import { marked } from "marked";
-  import type { PageProps } from "./$types";
   import * as Card from "$lib/components/ui/card/index.js";
   import Button, {
     buttonVariants,
@@ -273,7 +273,9 @@
   async function generateMeetingName() {
     generatingName = true;
     try {
-      name = await invoke("generate_meeting_name", { meetingId: data.id });
+      name = await invoke("generate_meeting_name", {
+        meetingId: data.id,
+      });
       console.log(name);
       generatingName = false;
     } catch (error) {
