@@ -3,7 +3,9 @@
   import Clipboard from "@lucide/svelte/icons/clipboard";
   import type { PageProps } from "./$types";
 
-  let { data }: PageProps = $props();
+  import { page } from "$app/state";
+
+  const meetingId = page.params.id;
 
   import { marked } from "marked";
   import * as Card from "$lib/components/ui/card/index.js";
@@ -32,7 +34,7 @@
   let saveStatus = $state("");
   let loadingSummary = $state(false);
 
-  let name = $state(`Meeting ${data.id}`);
+  let name = $state(`Meeting ${meetingId}`);
   let generatingName = $state(false);
 
   let isTranscribing: String | null = $state(null);
@@ -78,7 +80,7 @@
   async function regenerateSummary() {
     try {
       summaryContent = await invoke("generate_summary", {
-        meetingId: data.id,
+        meetingId: meetingId,
       });
       await getMeetingMetadata();
       isSummarizing = null; // Reset summarization status after fetching summary
@@ -101,11 +103,11 @@
 
   onMount(async () => {
     isTranscribing = await invoke("is_transcribing", {
-      meetingId: data.id,
+      meetingId: meetingId,
     });
 
     isSummarizing = await invoke("is_summarizing", {
-      meetingId: data.id,
+      meetingId: meetingId,
     });
 
     if (!isTranscribing) {
@@ -128,12 +130,12 @@
         toast.info("Summarization started: " + event.payload);
       },
     );
-    transcriptionListener = await listen<string>(data.id, (event) => {
+    transcriptionListener = await listen<string>(meetingId, (event) => {
       if (event.payload === "transcription-started") {
-        toast.info("Transcription started for meeting ID: " + data.id);
-        isTranscribing = data.id;
+        toast.info("Transcription started for meeting ID: " + meetingId);
+        isTranscribing = meetingId;
       } else if (event.payload === "transcription-finished") {
-        toast.success("Transcription finished for meeting ID: " + data.id);
+        toast.success("Transcription finished for meeting ID: " + meetingId);
         isTranscribing = null;
         getTranscript();
         getTranscriptJson();
@@ -150,11 +152,11 @@
   async function checkTranscriptionStatus() {
     try {
       isTranscribing = await invoke("is_transcribing", {
-        meetingId: data.id,
+        meetingId: meetingId,
       });
       console.log(
         "Transcription status for meeting ID",
-        data.id,
+        meetingId,
         ":",
         isTranscribing,
       );
@@ -167,25 +169,25 @@
   async function getTranscript() {
     try {
       transcriptContent = await invoke("get_meeting_transcript", {
-        meetingId: data.id,
+        meetingId: meetingId,
       });
       isTranscribing = null; // Reset transcription status after fetching transcript
     } catch (error) {
       console.error("Error fetching transcript:", error);
 
       await checkTranscriptionStatus();
-      if (isTranscribing && isTranscribing !== data.id) {
+      if (isTranscribing && isTranscribing !== meetingId) {
         // If transcription is still in progress, show a toast notification
         toast.info("Another Transcription is still in progress. Please wait.");
         return;
-      } else if (isTranscribing === data.id) {
+      } else if (isTranscribing === meetingId) {
         // If transcription is in progress for this meeting, show a toast notification
         toast.info("Transcription is still in progress. Please wait.");
         return;
       }
 
       // When the transcribe function settles without an error, retry fetching the transcript, otherwise show a toast error
-      invoke("transcribe_with_chunking", { meetingId: data.id })
+      invoke("transcribe_with_chunking", { meetingId: meetingId })
         .then(() => {
           console.log("Transcription finished successfully");
           getTranscript();
@@ -203,7 +205,7 @@
   }
 
   async function transcribe() {
-    invoke("transcribe_with_chunking", { meetingId: data.id })
+    invoke("transcribe_with_chunking", { meetingId: meetingId })
       .then(() => {
         getTranscript();
         getTranscriptJson();
@@ -219,7 +221,7 @@
   async function getTranscriptJson() {
     try {
       transcriptJsonContent = await invoke("get_meeting_transcript_json", {
-        meetingId: data.id,
+        meetingId: meetingId,
       });
     } catch (error) {
       console.error("Error fetching transcript:", error);
@@ -229,9 +231,9 @@
 
   async function getSummary(generateIfNotExists = false) {
     try {
-      console.log("Fetching summary for meeting ID:", data.id);
+      console.log("Fetching summary for meeting ID:", meetingId);
       summaryContent = await invoke("get_meeting_summary", {
-        meetingId: data.id,
+        meetingId: meetingId,
       });
     } catch (error) {
       console.error("Error fetching summary:", error);
@@ -248,8 +250,8 @@
 
   async function getAudio() {
     try {
-      // audio = await invoke("get_meeting_audio", { meetingId: data.id });
-      const icon = await readFile(`uploads/${data.id}/${data.id}.ogg`, {
+      // audio = await invoke("get_meeting_audio", { meetingId: meetingId });
+      const icon = await readFile(`uploads/${meetingId}/${meetingId}.ogg`, {
         baseDir: BaseDirectory.AppLocalData,
       });
       audio = icon;
@@ -262,7 +264,7 @@
   async function getMeetingMetadata() {
     try {
       meetingMetadata = await invoke("get_meeting_metadata", {
-        meetingId: data.id,
+        meetingId: meetingId,
       });
     } catch (error) {
       console.error("Error fetching meeting metadata:", error);
@@ -274,7 +276,7 @@
     generatingName = true;
     try {
       name = await invoke("generate_meeting_name", {
-        meetingId: data.id,
+        meetingId: meetingId,
       });
       console.log(name);
       generatingName = false;
@@ -392,7 +394,7 @@
         <Card.Title>Transcript</Card.Title>
       </Card.Header>
       <Card.Content>
-        {#if isTranscribing === data.id}
+        {#if isTranscribing === meetingId}
           <div class={"flex-wrap gap-2 animate-pulse flex"}>
             <div class="h-4 w-12 bg-foreground/10 rounded"></div>
             <div class="h-4 w-24 bg-foreground/10 rounded"></div>
@@ -411,7 +413,7 @@
             <div class="h-4 w-28 bg-foreground/10 rounded"></div>
             <div class="h-4 w-24 bg-foreground/10 rounded"></div>
           </div>
-        {:else if isTranscribing && isTranscribing !== data.id}
+        {:else if isTranscribing && isTranscribing !== meetingId}
           <p class="text-sm text-muted-foreground">
             Another transcription is in progress. Please wait.
           </p>
@@ -436,7 +438,7 @@
     <SpeakerNaming
       {audioURL}
       {reloadTranscript}
-      meetingId={data.id}
+      {meetingId}
       json={transcriptJsonContent}
     />
   </section>
@@ -447,7 +449,7 @@
         <Card.Title>Transcription Summary</Card.Title>
       </Card.Header>
       <Card.Content class="prose prose-invert mx-auto">
-        {#if isSummarizing === data.id}
+        {#if isSummarizing === meetingId}
           <div class={"flex-wrap gap-2 animate-pulse flex"}>
             <div class="h-4 w-12 bg-foreground/10 rounded"></div>
             <div class="h-4 w-24 bg-foreground/10 rounded"></div>
@@ -466,7 +468,7 @@
             <div class="h-4 w-28 bg-foreground/10 rounded"></div>
             <div class="h-4 w-24 bg-foreground/10 rounded"></div>
           </div>
-        {:else if isSummarizing && isSummarizing !== data.id && !summaryContent}
+        {:else if isSummarizing && isSummarizing !== meetingId && !summaryContent}
           <p class="text-sm text-muted-foreground">
             Another summarization is in progress. Please wait.
           </p>

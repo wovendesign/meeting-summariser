@@ -179,7 +179,7 @@
   }
 </script>
 
-<div class="container flex flex-col gap-6 p-4">
+<div class="flex flex-col gap-4 p-8 overflow-y-scroll h-full">
   <Toaster />
   <Button variant="outline" href="/" class="self-start">Back</Button>
   <h1 class="text-3xl font-bold">Settings</h1>

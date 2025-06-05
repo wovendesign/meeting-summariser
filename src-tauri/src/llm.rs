@@ -49,7 +49,7 @@ async fn try_external_api(
         .with_endpoint("http://localhost:11434/v1")
         .build()
         .map_err(|e| e.to_string())?;
-    
+
     println!("trying external ollama");
 
     let req = ChatCompletionRequest::new(
@@ -180,6 +180,10 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
     println!("Summarization started!");
     let transcript = get_meeting_transcript(app.clone(), meeting_id).await?;
 
+    if transcript.is_empty() {
+        return Err("No Transcript to Summarise".to_string());
+    }
+
     app.emit("summarization-started", &meeting_id).unwrap();
 
     let system_prompt = "
@@ -219,7 +223,6 @@ pub async fn is_summarizing(app: AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command]
 pub async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
-    // resolve <app>/uploads/<name>/summary.md
     let app_dir = app
         .path()
         .app_local_data_dir()
