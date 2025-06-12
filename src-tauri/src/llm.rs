@@ -141,6 +141,7 @@ Bei den Keyfacts sollen folgende Punkte beachtet werden:
 ´attendees´ enthält eine Liste von Personen, die am Meeting teilgenommen haben.
 ´moderation´ enthält den Namen einer oder meherer Personen, die das Meeting moderiert hat.
 ´protocol´ enthält den Namen einer oder meherer Personen, die für das Protokoll zuständig sind.
+Wie der Entscheidungsprozess der Protokollführung ablief und welche Gründe es für diese Entscheidung gab müssen nicht Erwähnt werden.
 ´timekeeping´ enthält den Namen einer oder meherer Personen, die für die Zeitmessung verantwortig sind.
 
 Verkürzen Sie nichts zu stark. 
@@ -152,8 +153,8 @@ Halten Sie Redebeiträge einzelner Personen getrennt, wenn möglich.
 Wenn abkürzungen genannt werden, erklären Sie diese nicht. 
 Inhaltliche Wiederholungen können zusammengefasst werden. 
 Nebensächlichkeiten wie technische Probleme oder persönliche Anekdoten müssen nicht beachtet werden.
-Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an. 
-Wie der Entscheidungsprozess der Protokollführung ablief und welche Gründe es für diese Entscheidung gab müssen nicht Erwähnt werden.", key_facts_str)
+Unter ´ToDo´ sollen die wichtigsten Aufgaben (´tasks´), die im Meeting besprochen wurden, mit Bzeug auf die jeweilige Person(´asignee´), aufgelistet werden.
+Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an.", key_facts_str)
         },
     }
 }
