@@ -382,10 +382,14 @@ async fn summarize_chunks(
         attendees: None,
     };
 
+    // Total steps: chunk processing + final summary generation
+    let total_steps = chunks.len() + 1;
+
     for (i, chunk) in chunks.iter().enumerate() {
+        let current_step = i + 1;
         app.emit(
             "llm-progress",
-            &format!("Summarizing chunk {} of {}", i + 1, chunks.len()),
+            &format!("Step {}/{}: Summarizing chunk {} of {}", current_step, total_steps, i + 1, chunks.len()),
         )
         .unwrap();
 
@@ -468,9 +472,10 @@ async fn summarize_chunks(
         println!("Warning: Failed to save all chunk summaries: {}", e);
     }
 
+    let final_step = total_steps;
     app.emit(
         "llm-progress",
-        "Combining chunk summaries into final summary...",
+        &format!("Step {}/{}: Combining chunk summaries into final summary...", final_step, total_steps),
     )
     .unwrap();
 
@@ -513,15 +518,23 @@ async fn generate_text_with_llm(
     // };
 
     // Try external API first if enabled
-    app.emit("llm-progress", "Trying external API...").unwrap();
+    app.emit("llm-progress", "🔄 Trying external API...").unwrap();
+    let api_start = Instant::now();
+    
     match try_external_api(system_prompt, user_prompt, structure).await {
         Ok(response) => {
-            app.emit("llm-progress", "External API successful").unwrap();
+            let api_duration = api_start.elapsed();
+            let total_duration = start_time.elapsed();
+            println!("✅ API successful! API time: {:.2}s, Total time: {:.2}s", 
+                api_duration.as_secs_f64(), total_duration.as_secs_f64());
+            app.emit("llm-progress", "✅ External API successful").unwrap();
             return Ok(response);
         }
         Err(e) => {
-            println!("External API failed: {}, falling back to Kalosm", e);
-            app.emit("llm-progress", "External API failed, switching to local model...").unwrap();
+            let api_duration = api_start.elapsed();
+            println!("❌ API failed after {:.2}s: {}, falling back to Kalosm", 
+                api_duration.as_secs_f64(), e);
+            app.emit("llm-progress", "❌ External API failed, switching to local model...").unwrap();
             return Err(e);
         }
     }
@@ -691,13 +704,13 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
     let content = if transcript.len() > 10_000 {
         app.emit(
             "llm-progress",
-            "Transcript is long, splitting into chunks for processing...",
+            "📄 Transcript is long, splitting into chunks for processing...",
         )
         .unwrap();
 
         // Split transcript into manageable chunks
         let chunks = split_text_into_chunks(&transcript, 10_000);
-        println!("Split transcript into {} chunks", chunks.len());
+        println!("📦 Split transcript into {} chunks", chunks.len());
 
         // Summarize chunks and combine
         summarize_chunks(app.clone(), chunks, &Language::default(), meeting_id).await?
