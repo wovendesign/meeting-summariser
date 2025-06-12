@@ -39,12 +39,19 @@
 
   let isTranscribing: String | null = $state(null);
   let isSummarizing: String | null = $state(null);
-  
+
   // Transcription progress tracking
   let transcriptionProgress = $state({
     currentChunk: 0,
     totalChunks: 0,
-    isActive: false
+    isActive: false,
+  });
+
+  // Audio splitting progress tracking
+  let audioSplittingProgress = $state({
+    currentChunk: 0,
+    totalChunks: 0,
+    isActive: false,
   });
 
   import { readFile, BaseDirectory } from "@tauri-apps/plugin-fs";
@@ -109,6 +116,63 @@
   });
 
   onMount(async () => {
+    // Listen for whisperx progress events
+    const whisperxStartListener = await listen<number>(
+      "whisperx-start",
+      (event) => {
+        console.log("WhisperX started with", event.payload, "chunks");
+        transcriptionProgress.totalChunks = event.payload;
+        transcriptionProgress.currentChunk = 0;
+        transcriptionProgress.isActive = true;
+        audioSplittingProgress.isActive = false; // Audio splitting is done
+      },
+    );
+
+    const whisperxProgressListener = await listen<number>(
+      "whisperx-progress",
+      (event) => {
+        console.log(
+          "WhisperX progress:",
+          event.payload + 1,
+          "of",
+          transcriptionProgress.totalChunks,
+        );
+        transcriptionProgress.currentChunk = event.payload + 1; // +1 because backend sends 0-based index
+      },
+    );
+
+    // Listen for ffmpeg progress events
+    const ffmpegStartListener = await listen<number>(
+      "ffmpeg-start",
+      (event) => {
+        console.log("FFmpeg started with", event.payload, "chunks");
+        audioSplittingProgress.totalChunks = event.payload;
+        audioSplittingProgress.currentChunk = 0;
+        audioSplittingProgress.isActive = true;
+      },
+    );
+
+    const ffmpegProgressListener = await listen<number>(
+      "ffmpeg-progress",
+      (event) => {
+        console.log(
+          "FFmpeg progress:",
+          event.payload + 1,
+          "of",
+          audioSplittingProgress.totalChunks,
+        );
+        audioSplittingProgress.currentChunk = event.payload + 1; // +1 because backend sends 0-based index
+      },
+    );
+
+    // Store the listeners for cleanup
+    whisperxListeners = [
+      whisperxStartListener,
+      whisperxProgressListener,
+      ffmpegStartListener,
+      ffmpegProgressListener,
+    ];
+
     isTranscribing = await invoke("is_transcribing", {
       meetingId: meetingId,
     });
@@ -142,40 +206,28 @@
         toast.info("Transcription started for meeting ID: " + meetingId);
         isTranscribing = meetingId;
         transcriptionProgress.isActive = true;
+        audioSplittingProgress.isActive = true; // Audio splitting happens first
       } else if (event.payload === "transcription-finished") {
         toast.success("Transcription finished for meeting ID: " + meetingId);
         isTranscribing = null;
         transcriptionProgress.isActive = false;
         transcriptionProgress.currentChunk = 0;
         transcriptionProgress.totalChunks = 0;
+        audioSplittingProgress.isActive = false;
+        audioSplittingProgress.currentChunk = 0;
+        audioSplittingProgress.totalChunks = 0;
         getTranscript();
         getTranscriptJson();
         getSummary(true);
       }
     });
-
-    // Listen for whisperx progress events
-    const whisperxStartListener = await listen<number>("whisperx-start", (event) => {
-      console.log("WhisperX started with", event.payload, "chunks");
-      transcriptionProgress.totalChunks = event.payload;
-      transcriptionProgress.currentChunk = 0;
-      transcriptionProgress.isActive = true;
-    });
-
-    const whisperxProgressListener = await listen<number>("whisperx-progress", (event) => {
-      console.log("WhisperX progress:", event.payload + 1, "of", transcriptionProgress.totalChunks);
-      transcriptionProgress.currentChunk = event.payload + 1; // +1 because backend sends 0-based index
-    });
-
-    // Store the listeners for cleanup
-    whisperxListeners = [whisperxStartListener, whisperxProgressListener];
   });
 
   onDestroy(() => {
     summarizationListener();
     transcriptionListener();
     // Clean up whisperx listeners
-    whisperxListeners.forEach(listener => listener());
+    whisperxListeners.forEach((listener) => listener());
   });
 
   async function checkTranscriptionStatus() {
@@ -412,17 +464,53 @@
       <Card.Content>
         {#if isTranscribing === meetingId}
           <div class="space-y-4">
-            {#if transcriptionProgress.isActive && transcriptionProgress.totalChunks > 0}
-              <!-- Progress bar and text -->
+            {#if audioSplittingProgress.isActive && audioSplittingProgress.totalChunks > 0}
+              <!-- Audio splitting progress -->
               <div class="space-y-2">
                 <div class="flex justify-between text-sm">
-                  <span>Transcribing Chunk {transcriptionProgress.currentChunk} of {transcriptionProgress.totalChunks}</span>
-                  <span>{Math.round((transcriptionProgress.currentChunk / transcriptionProgress.totalChunks) * 100)}%</span>
+                  <span
+                    >Splitting Audio Chunk {audioSplittingProgress.currentChunk}
+                    of {audioSplittingProgress.totalChunks}</span
+                  >
+                  <span
+                    >{Math.round(
+                      (audioSplittingProgress.currentChunk /
+                        audioSplittingProgress.totalChunks) *
+                        100,
+                    )}%</span
+                  >
                 </div>
                 <div class="w-full bg-muted rounded-full h-2">
-                  <div 
-                    class="bg-primary h-2 rounded-full transition-all duration-300 ease-in-out" 
-                    style="width: {(transcriptionProgress.currentChunk / transcriptionProgress.totalChunks) * 100}%"
+                  <div
+                    class="bg-orange-500 h-2 rounded-full transition-all duration-300 ease-in-out"
+                    style="width: {(audioSplittingProgress.currentChunk /
+                      audioSplittingProgress.totalChunks) *
+                      100}%"
+                  ></div>
+                </div>
+              </div>
+            {/if}
+            {#if transcriptionProgress.isActive && transcriptionProgress.totalChunks > 0}
+              <!-- Transcription progress -->
+              <div class="space-y-2">
+                <div class="flex justify-between text-sm">
+                  <span
+                    >Transcribing Chunk {transcriptionProgress.currentChunk} of {transcriptionProgress.totalChunks}</span
+                  >
+                  <span
+                    >{Math.round(
+                      (transcriptionProgress.currentChunk /
+                        transcriptionProgress.totalChunks) *
+                        100,
+                    )}%</span
+                  >
+                </div>
+                <div class="w-full bg-muted rounded-full h-2">
+                  <div
+                    class="bg-primary h-2 rounded-full transition-all duration-300 ease-in-out"
+                    style="width: {(transcriptionProgress.currentChunk /
+                      transcriptionProgress.totalChunks) *
+                      100}%"
                   ></div>
                 </div>
               </div>

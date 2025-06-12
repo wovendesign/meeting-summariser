@@ -1,7 +1,7 @@
 use openai_api_rs::v1::audio;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::process::Command;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,6 +94,7 @@ pub async fn split_audio_into_chunks<P: AsRef<Path>>(
     audio_path: P,
     output_dir: P,
     meeting_id: &str,
+    app: AppHandle,
 ) -> Result<Vec<AudioChunk>, String> {
     let audio_info = analyze_audio(&audio_path).await?;
 
@@ -109,11 +110,22 @@ pub async fn split_audio_into_chunks<P: AsRef<Path>>(
 
     check_ffmpeg_installation().await?;
 
+    // Emit start event if app handle is provided
+    println!(
+        "ffmpeg-start event emitted with chunk count: {}",
+        audio_info.chunk_count
+    );
+    app.emit("ffmpeg-start", audio_info.chunk_count).unwrap();
+
     let mut chunks = Vec::new();
     // const CHUNK_DURATION: f64 = 1800.0; // 30 minutes in seconds
     const CHUNK_DURATION: f64 = 600.0; // 10 minutes in seconds
 
     for i in 0..audio_info.chunk_count {
+        // Emit progress event if app handle is provided
+
+        app.emit("ffmpeg-progress", i).unwrap();
+
         let start_time = i as f64 * CHUNK_DURATION;
         let end_time = ((i + 1) as f64 * CHUNK_DURATION).min(audio_info.duration_seconds);
         let chunk_duration = end_time - start_time;
@@ -206,7 +218,7 @@ pub async fn split_audio_into_chunks_command(
     let file_name = format!("{}.ogg", meeting_id);
     let audio_path = base_dir.join(file_name);
 
-    split_audio_into_chunks(audio_path, base_dir, meeting_id).await
+    split_audio_into_chunks(audio_path, base_dir, meeting_id, app.clone()).await
 }
 
 /// Tauri command to convert user audio file to OGG format

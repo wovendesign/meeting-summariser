@@ -535,7 +535,7 @@ pub async fn transcribe_with_chunking(
             "Audio is longer than 30 minutes, splitting into {} chunks",
             audio_info.chunk_count
         );
-        split_audio_into_chunks(&audio_path, &base_dir, meeting_id)
+        split_audio_into_chunks(&audio_path, &base_dir, meeting_id, app.clone())
             .await
             .map_err(|e| {
                 // Clear state on error
