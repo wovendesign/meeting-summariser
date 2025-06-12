@@ -27,9 +27,9 @@ struct Attendee {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct KeyFact {
-    moderation: Option<String>,
-    protocol: Option<String>,
-    timekeeping: Option<String>,
+    responisible_for_moderation: Option<String>,
+    responisible_for_protocol: Option<String>,
+    responisible_for_timekeeping: Option<String>,
     attendees: Option<Vec<Attendee>>,
 }
 
@@ -71,13 +71,13 @@ impl MeetingToMarkdown for FinalSummaryFormat {
         let mut markdown = format!("## {}\n\n", self.title.text);
         markdown.push_str(&format!("{} {}\n\n", self.title.emoji, self.summary));
         markdown.push_str("### Key Facts\n");
-        if let Some(moderation) = &self.key_facts.moderation {
+        if let Some(moderation) = &self.key_facts.responisible_for_moderation {
             markdown.push_str(&format!("- **Moderation:** {}\n", moderation));
         }
-        if let Some(protocol) = &self.key_facts.protocol {
+        if let Some(protocol) = &self.key_facts.responisible_for_protocol {
             markdown.push_str(&format!("- **Protocol:** {}\n", protocol));
         }
-        if let Some(timekeeping) = &self.key_facts.timekeeping {
+        if let Some(timekeeping) = &self.key_facts.responisible_for_timekeeping {
             markdown.push_str(&format!("- **Timekeeping:** {}\n", timekeeping));
         }
         if let Some(attendees) = &self.key_facts.attendees {
@@ -139,10 +139,10 @@ Falls eine Person noch nicht in den vorherigen Key Facts erwähnt wurde, erwähn
 Statt Namen zu erwähnen, nutze die ID der Attendees aus den Key Facts (z. B. `[1] fragt …`).
 Bei den Keyfacts sollen folgende Punkte beachtet werden:
 ´attendees´ enthält eine Liste von Personen, die am Meeting teilgenommen haben.
-´moderation´ enthält den Namen einer oder meherer Personen, die das Meeting moderiert hat.
-´protocol´ enthält den Namen einer oder meherer Personen, die für das Protokoll zuständig sind.
+´responisible_for_moderation´ enthält den Namen einer oder meherer Personen, die das Meeting moderiert hat.
+´responisible_for_protocol´ enthält den Namen einer oder meherer Personen, die für das Protokoll zuständig sind.
 Wie der Entscheidungsprozess der Protokollführung ablief und welche Gründe es für diese Entscheidung gab müssen nicht Erwähnt werden.
-´timekeeping´ enthält den Namen einer oder meherer Personen, die für die Zeitmessung verantwortig sind.
+´responisible_for_timekeeping´ enthält den Namen einer oder meherer Personen, die für die Zeitmessung verantwortig sind.
 
 Verkürzen Sie nichts zu stark. 
 Fassen Sie möglichst alle relevanten Inhalte zusammen.
@@ -153,7 +153,7 @@ Halten Sie Redebeiträge einzelner Personen getrennt, wenn möglich.
 Wenn abkürzungen genannt werden, erklären Sie diese nicht. 
 Inhaltliche Wiederholungen können zusammengefasst werden. 
 Nebensächlichkeiten wie technische Probleme oder persönliche Anekdoten müssen nicht beachtet werden.
-Unter ´ToDo´ sollen die wichtigsten Aufgaben (´tasks´), die im Meeting besprochen wurden, mit Bzeug auf die jeweilige Person(´asignee´), aufgelistet werden.
+Unter ´ToDo´ sollen die wichtigsten Aufgaben (´tasks´), die im Meeting besprochen wurden, mit Bezug auf die jeweilige Person(´ateendee´), in das Feld ´asignee´ aufgelistet werden.
 Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an.", key_facts_str)
         },
     }
@@ -292,9 +292,9 @@ fn split_text_into_chunks(text: &str, max_chars: usize) -> Vec<String> {
 fn combine_structured_first_summaries(summaries: Vec<FirstSummaryFormat>) -> FirstSummaryFormat {
     let mut combined = FirstSummaryFormat {
         key_facts: KeyFact {
-            moderation: None,
-            protocol: None,
-            timekeeping: None,
+            responisible_for_moderation: None,
+            responisible_for_protocol: None,
+            responisible_for_timekeeping: None,
             attendees: None,
         },
         topics: Vec::new(),
@@ -303,14 +303,14 @@ fn combine_structured_first_summaries(summaries: Vec<FirstSummaryFormat>) -> Fir
 
     for summary in summaries {
         // Combine key facts
-        if let Some(moderation) = summary.key_facts.moderation {
-            combined.key_facts.moderation = Some(moderation);
+        if let Some(moderation) = summary.key_facts.responisible_for_moderation {
+            combined.key_facts.responisible_for_moderation = Some(moderation);
         }
-        if let Some(protocol) = summary.key_facts.protocol {
-            combined.key_facts.protocol = Some(protocol);
+        if let Some(protocol) = summary.key_facts.responisible_for_protocol {
+            combined.key_facts.responisible_for_protocol = Some(protocol);
         }
-        if let Some(timekeeping) = summary.key_facts.timekeeping {
-            combined.key_facts.timekeeping = Some(timekeeping);
+        if let Some(timekeeping) = summary.key_facts.responisible_for_timekeeping {
+            combined.key_facts.responisible_for_timekeeping = Some(timekeeping);
         }
         if let Some(attendees) = summary.key_facts.attendees {
             if combined.key_facts.attendees.is_none() {
@@ -376,9 +376,9 @@ async fn summarize_chunks(
     }
 
     let mut key_facts = KeyFact {
-        moderation: None,
-        protocol: None,
-        timekeeping: None,
+        responisible_for_moderation: None,
+        responisible_for_protocol: None,
+        responisible_for_timekeeping: None,
         attendees: None,
     };
 
@@ -408,14 +408,14 @@ async fn summarize_chunks(
             .map_err(|e| format!("Failed to parse chunk summary JSON: {}", e))?;
 
         // Update key facts if they are present in the chunk summary.
-        if let Some(moderation) = &chunk_summary.key_facts.moderation {
-            key_facts.moderation = Some(moderation.clone());
+        if let Some(moderation) = &chunk_summary.key_facts.responisible_for_moderation {
+            key_facts.responisible_for_moderation = Some(moderation.clone());
         }
-        if let Some(protocol) = &chunk_summary.key_facts.protocol {
-            key_facts.protocol = Some(protocol.clone());
+        if let Some(protocol) = &chunk_summary.key_facts.responisible_for_protocol {
+            key_facts.responisible_for_protocol = Some(protocol.clone());
         }
-        if let Some(timekeeping) = &chunk_summary.key_facts.timekeeping {
-            key_facts.timekeeping = Some(timekeeping.clone());
+        if let Some(timekeeping) = &chunk_summary.key_facts.responisible_for_timekeeping {
+            key_facts.responisible_for_timekeeping = Some(timekeeping.clone());
         }
         if let Some(attendees) = &chunk_summary.key_facts.attendees {
             if key_facts.attendees.is_none() {
