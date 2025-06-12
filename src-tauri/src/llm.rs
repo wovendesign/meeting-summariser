@@ -144,6 +144,12 @@ Falls eine Person noch nicht in den vorherigen Key Facts erwähnt wurde, erwähn
 {}
 
 Statt Namen zu erwähnen, nutze die ID der Attendees aus den Key Facts (z. B. `[1] fragt …`).
+Bei den Keyfacts sollen folgende Punkte beachtet werden:
+´attendees´ enthält eine Liste von Personen, die am Meeting teilgenommen haben.
+´moderation´ enthält den Namen einer oder meherer Personen, die das Meeting moderiert hat.
+´protocol´ enthält den Namen einer oder meherer Personen, die für das Protokoll zuständig sind.
+Wie der Entscheidungsprozess der Protokollführung ablief und welche Gründe es für diese Entscheidung gab müssen nicht Erwähnt werden.
+´timekeeping´ enthält den Namen einer oder meherer Personen, die für die Zeitmessung verantwortig sind.
 
 Verkürzen Sie nichts zu stark. 
 Fassen Sie möglichst alle relevanten Inhalte zusammen.
@@ -154,8 +160,8 @@ Halten Sie Redebeiträge einzelner Personen getrennt, wenn möglich.
 Wenn abkürzungen genannt werden, erklären Sie diese nicht. 
 Inhaltliche Wiederholungen können zusammengefasst werden. 
 Nebensächlichkeiten wie technische Probleme oder persönliche Anekdoten müssen nicht beachtet werden.
-Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an. 
-Wie der Entscheidungsprozess der Protokollführung ablief und welche Gründe es für diese Entscheidung gab müssen nicht Erwähnt werden.", key_facts_str)
+Unter ´ToDo´ sollen die wichtigsten Aufgaben (´tasks´), die im Meeting besprochen wurden, mit Bzeug auf die jeweilige Person(´asignee´), aufgelistet werden.
+Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an.", key_facts_str)
         },
     }
 }
@@ -179,7 +185,7 @@ Es soll möglichst der gesamte Inhalt des Meetings zusammengefasst werden, ohne 
 In erster Linie sollst du die Stichpunkte gruppieren, ohne sie zu verändern oder zu kürzen.
 
 Die `topics` enthalten die wichtigsten Themen des Meetings, die in den einzelnen Abschnitten behandelt wurden. Diese sollten in einer strukturierten Form mit Stichpunkten und gegebenenfalls Unterpunkten dargestellt werden. Kombinieren Sie überlappende Themen und bewahren Sie Details. Vermeiden Sie Wiederholungen und konzentrieren Sie sich auf relevante Punkte. Meetinginterne Inhalte wie technische Probleme oder persönliche Anekdoten müssen nicht beachtet werden.
-Die `todos` enthalten die wichtigsten Aufgaben, die im Meeting besprochen wurden. Falls eine oder mehrere Personen für eine Aufgabe verantwortlich sind, listen Sie diese in der `assignees`-Liste auf. Die Aufgaben sollten klar und präzise formuliert sein. Aufgaben, die nur innerhalb des Meetings besprochen wurden, sollten nicht in den To-Dos auftauchen, sondern nur die Aufgaben, die für die Zukunft relevant sind.",
+Die `todos` enthalten die wichtigsten Aufgaben, die im Meeting besprochen wurden. Falls eine oder mehrere Personen für eine Aufgabe verantwortlich sind, listen Sie diese in der `assignees`-Liste auf. Die Aufgaben sollten klar und präzise formuliert sein. Aufgaben, die sich nur auf das Meetings beziehen, sollten nicht in den To-Dos auftauchen, sondern nur die Aufgaben, die für die Zukunft relevant sind. Bei unklarer Verantwortlichkeit oder fehlender Zuweisung, `assignees` schreibe sie mehrer Namen hin oder lassen Sie das Feld.",
     }
 }
 
@@ -383,10 +389,20 @@ async fn summarize_chunks(
         attendees: None,
     };
 
+    // Total steps: chunk processing + final summary generation
+    let total_steps = chunks.len() + 1;
+
     for (i, chunk) in chunks.iter().enumerate() {
+        let current_step = i + 1;
         app.emit(
             "llm-progress",
-            &format!("Summarizing chunk {} of {}", i + 1, chunks.len()),
+            &format!(
+                "Step {}/{}: Summarizing chunk {} of {}",
+                current_step,
+                total_steps,
+                i + 1,
+                chunks.len()
+            ),
         )
         .unwrap();
 
@@ -469,9 +485,13 @@ async fn summarize_chunks(
         println!("Warning: Failed to save all chunk summaries: {}", e);
     }
 
+    let final_step = total_steps;
     app.emit(
         "llm-progress",
-        "Combining chunk summaries into final summary...",
+        &format!(
+            "Step {}/{}: Combining chunk summaries into final summary...",
+            final_step, total_steps
+        ),
     )
     .unwrap();
 
@@ -514,17 +534,33 @@ async fn generate_text_with_llm(
     // };
 
     // Try external API first if enabled
-    app.emit("llm-progress", "Trying external API...").unwrap();
+    app.emit("llm-progress", "🔄 Trying external API...")
+        .unwrap();
+    let api_start = Instant::now();
+
     match try_external_api(system_prompt, user_prompt, structure).await {
         Ok(response) => {
-            app.emit("llm-progress", "External API successful").unwrap();
+            let api_duration = api_start.elapsed();
+            let total_duration = start_time.elapsed();
+            println!(
+                "✅ API successful! API time: {:.2}s, Total time: {:.2}s",
+                api_duration.as_secs_f64(),
+                total_duration.as_secs_f64()
+            );
+            app.emit("llm-progress", "✅ External API successful")
+                .unwrap();
             return Ok(response);
         }
         Err(e) => {
-            println!("External API failed: {}, falling back to Kalosm", e);
+            let api_duration = api_start.elapsed();
+            println!(
+                "❌ API failed after {:.2}s: {}, falling back to Kalosm",
+                api_duration.as_secs_f64(),
+                e
+            );
             app.emit(
                 "llm-progress",
-                "External API failed, switching to local model...",
+                "❌ External API failed, switching to local model...",
             )
             .unwrap();
             return Err(e);
@@ -615,13 +651,13 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
     let content = if transcript.len() > 10_000 {
         app.emit(
             "llm-progress",
-            "Transcript is long, splitting into chunks for processing...",
+            "📄 Transcript is long, splitting into chunks for processing...",
         )
         .unwrap();
 
         // Split transcript into manageable chunks
         let chunks = split_text_into_chunks(&transcript, 10_000);
-        println!("Split transcript into {} chunks", chunks.len());
+        println!("📦 Split transcript into {} chunks", chunks.len());
 
         // Summarize chunks and combine
         summarize_chunks(app.clone(), chunks, &Language::default(), meeting_id).await?
