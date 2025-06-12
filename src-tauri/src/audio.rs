@@ -73,7 +73,7 @@ pub async fn analyze_audio<P: AsRef<Path>>(audio_path: P) -> Result<AudioInfo, S
     let duration_seconds = get_audio_duration(&audio_path).await?;
 
     // 30 minutes = 1800 seconds
-    const MAX_CHUNK_DURATION: f64 = 1800.0;
+    const MAX_CHUNK_DURATION: f64 = 600.0;
 
     let needs_splitting = duration_seconds > MAX_CHUNK_DURATION;
     let chunk_count = if needs_splitting {
@@ -110,7 +110,8 @@ pub async fn split_audio_into_chunks<P: AsRef<Path>>(
     check_ffmpeg_installation().await?;
 
     let mut chunks = Vec::new();
-    const CHUNK_DURATION: f64 = 1800.0; // 30 minutes in seconds
+    // const CHUNK_DURATION: f64 = 1800.0; // 30 minutes in seconds
+    const CHUNK_DURATION: f64 = 600.0; // 10 minutes in seconds
 
     for i in 0..audio_info.chunk_count {
         let start_time = i as f64 * CHUNK_DURATION;
@@ -228,10 +229,7 @@ pub async fn convert_user_audio(app: AppHandle, audio_path: &str) -> Result<Stri
         ));
     }
 
-    println!(
-        "Audio file exists: {}",
-        audio_path.to_string_lossy()
-    );
+    println!("Audio file exists: {}", audio_path.to_string_lossy());
 
     // Create New Meeting Directory
     // This will be the directory where the audio file will be stored
@@ -248,7 +246,10 @@ pub async fn convert_user_audio(app: AppHandle, audio_path: &str) -> Result<Stri
     );
     let meeting_dir = base_dir.join(&meeting_id);
 
-    println!("Creating meeting directory: {}", meeting_dir.to_string_lossy());
+    println!(
+        "Creating meeting directory: {}",
+        meeting_dir.to_string_lossy()
+    );
 
     std::fs::create_dir_all(&meeting_dir)
         .map_err(|e| format!("Failed to create meeting directory: {}", e))?;
