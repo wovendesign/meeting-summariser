@@ -37,6 +37,7 @@ struct KeyFact {
 struct Topic {
     title: String,
     bullet_points: Vec<String>,
+    sub_topics: Option<Vec<Topic>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -747,9 +748,16 @@ pub async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<Str
     let summary_path = base_dir.join("summary.json");
 
     // read summary file
-    fs::read_to_string(summary_path)
+    let summary_json = fs::read_to_string(summary_path)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    let summary: FinalSummaryFormat =
+        serde_json::from_str(&summary_json).map_err(|e| e.to_string())?;
+
+    let markdown = summary.to_markdown();
+
+    Ok(markdown)
 }
 
 #[tauri::command]

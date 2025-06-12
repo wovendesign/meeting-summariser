@@ -655,7 +655,7 @@ async fn transcribe_single_chunk(
     //     .arg("--output_dir")
     //     .arg(output_dir)
     //     .arg("--hf_token")
-    //     .arg("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")
+    //     .arg("HFTOKEN")
     //     .output()
     //     .await
     //     .map_err(|e| format!("Failed to execute whisperx: {}", e))?;
