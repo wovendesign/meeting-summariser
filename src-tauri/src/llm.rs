@@ -1,12 +1,260 @@
 use std::io::Write;
 use crate::{get_meeting_transcript, AppState, LlmConfig, MeetingMetadata};
 use kalosm::language::*;
-use openai_api_rs::v1::api::OpenAIClient;
-use openai_api_rs::v1::chat_completion;
-use openai_api_rs::v1::chat_completion::ChatCompletionRequest;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri::http::request;
 use tokio::fs;
 use tokio::sync::Mutex;
+use tauri_plugin_http::reqwest;
+use tauri_plugin_http::reqwest::Client;
+
+#[derive(Debug, Clone)]
+pub enum Language {
+    English,
+    German,
+}
+
+impl Default for Language {
+    fn default() -> Self {
+        Language::German
+    }
+}
+
+fn get_chunk_summarization_prompt(language: &Language) -> &'static str {
+    match language {
+        Language::English => "
+You are a meeting summarization assistant. Summarize the provided meeting transcript chunk in a structured format:
+
+- 📌 Introduction: Brief context about what was discussed
+- 📝 Key Points: Main topics and decisions (use bullet points)
+- ✅ Action Items: Tasks, assignments, or next steps mentioned (format: • [Person]: Task description)
+
+Keep the summary concise but comprehensive. Maintain any speaker names or roles mentioned. if abbreviations are used, do not explain them.",
+
+        Language::German => "
+Sie sind ein Assistent für Meeting-Zusammenfassungen. Fassen Sie den bereitgestellten Abschnitt eines Meeting-Transkripts möglichst vollständig zusammen:
+
+- 📌 Einführung: Worum ging es zu Beginn?
+- 📝 Wichtige Punkte: Alle besprochenen Themen und Argumente mit Sprecherbezug (verwenden Sie Aufzählungspunkte).
+- ✅ Aktionspunkte: Aufgaben, Zuweisungen oder nächste Schritte (Format: • [Person]: Aufgabenbeschreibung)
+
+Verkürzen Sie nichts zu stark. Fassen Sie möglichst alle relevanten Inhalte zusammen. Der Stil darf sachlich, aber detailliert sein. Halten Sie Redebeiträge einzelner Personen getrennt, wenn möglich. Wenn abkürzungen genannt werden, erklären Sie diese nicht.",
+    }
+}
+
+fn get_final_summary_prompt(language: &Language) -> &'static str {
+    match language {
+        Language::English => "
+Summarize the following transcript chunk. Focus on:
+
+1. What was discussed?
+2. What was decided?
+3. What needs to happen next?
+
+Preserve speaker names. Use bullet points. Do not use \"Introduction\"/\"Key Points\"/\"Action Items\" as section headers.",
+
+        Language::German => "
+Fassen Sie die folgenden Abschnittszusammenfassungen zu einer vollständigen und detaillierten Meeting-Zusammenfassung zusammen.
+
+Berücksichtigen Sie:
+1. Was wurde besprochen? Geben Sie zentrale Aussagen, Argumente und Meinungen mit Sprecherbezug wieder.
+2. Was wurde entschieden? Nennen Sie explizit getroffene Beschlüsse oder Konsensentwicklungen.
+3. Was sind konkrete nächste Schritte?
+
+Erstellen Sie eine gegliederte Zusammenfassung mit:
+- 📌 Gesamtkontext
+- 🧩 Zusammengeführte Hauptthemen (mit Bullet Points und Namen, wenn vorhanden)
+- ✅ Aktionspunkte nach Personen gruppiert (Format: • [Name]: Aufgabenbeschreibung)
+
+Behalten Sie den Charakter des Meetings (z. B. informell, aktivistisch) bei und vermeiden Sie oberflächliche Generalisierungen.",
+
+    }
+}
+
+fn get_direct_summarization_prompt(language: &Language) -> &'static str {
+    match language {
+        Language::English => "
+You are a meeting summarization assistant. You will only generate the meeting summary, and not mention anything earlier in the chat, nor any confirmation that you understood.
+
+You receive summaries of transcript *chunks* from a single meeting. Combine them into one structured summary with the following sections:
+
+- 📌 **Overall Context**: Briefly describe the meeting's overarching goal or theme.
+- 🧩 **Merged Key Topics**: Merge overlapping topics and preserve detail. Deduplicate similar points.
+  - Use bullet points.
+  - Keep speaker names/roles if mentioned.
+  - Preserve tone (e.g., activist, formal, casual).
+- ✅ **Action Items**:
+  - Group by person if possible.
+  - Use this format: • [Name]: Task description
+
+Do NOT repeat the headers from the input chunks. Focus on *integration*, *concision*, and *completeness*. Avoid generic filler phrases like \"the speaker discusses\".",
+
+        Language::German => "
+Sie sind ein Assistent für Meeting-Zusammenfassungen. Sie werden nur die Meeting-Zusammenfassung erstellen und nichts Früheres im Chat erwähnen oder bestätigen, dass Sie verstanden haben.
+
+Sie erhalten Zusammenfassungen von Transkript-*Abschnitten* aus einem einzigen Meeting. Kombinieren Sie sie zu einer strukturierten Zusammenfassung mit folgenden Abschnitten:
+
+- 📌 **Gesamtkontext**: Beschreiben Sie kurz das übergeordnete Ziel oder Thema des Meetings.
+- 🧩 **Zusammengeführte Hauptthemen**: Führen Sie überlappende Themen zusammen und bewahren Sie Details. Entfernen Sie ähnliche Punkte.
+  - Verwenden Sie Aufzählungspunkte.
+  - Behalten Sie Sprechernamen/Rollen bei, falls erwähnt.
+  - Bewahren Sie den Ton (z.B. aktivistisch, formell, locker).
+- ✅ **Aktionspunkte**:
+  - Gruppieren Sie nach Person, wenn möglich.
+  - Verwenden Sie dieses Format: • [Name]: Aufgabenbeschreibung
+
+Wiederholen Sie NICHT die Überschriften aus den Eingabe-Abschnitten. Konzentrieren Sie sich auf *Integration*, *Prägnanz* und *Vollständigkeit*. Vermeiden Sie allgemeine Füllphrasen wie \"der Sprecher diskutiert\".",
+    }
+}
+
+fn get_meeting_name_prompt(language: &Language) -> &'static str {
+    match language {
+        Language::English => "You are a meeting summarization assistant. generate a concise and relevant meeting name based on the provided summary. In front of the meeting name, add a fitting emoji. The name is supposed to be short (max 6 words), concise and relevant to the meeting summary.",
+
+        Language::German => "Sie sind ein Assistent für Meeting-Zusammenfassungen. Erstellen Sie einen prägnanten und relevanten Meeting-Namen basierend auf der bereitgestellten Zusammenfassung. Vor dem Meeting-Namen fügen Sie ein passendes Emoji hinzu. Der Name soll kurz (max. 6 Wörter), prägnant und relevant zur Meeting-Zusammenfassung sein. Generiere nur den namen, keine sonstige bestätigung des prompts.",
+    }
+}
+
+fn get_test_prompt(language: &Language) -> &'static str {
+    match language {
+        Language::English => "You are a helpful assistant. Respond concisely.",
+        Language::German => "Sie sind ein hilfreicher Assistent. Antworten Sie prägnant.",
+    }
+}
+
+fn get_test_user_prompt(language: &Language) -> &'static str {
+    match language {
+        Language::English => "Say 'Hello! LLM test successful.' and nothing else.",
+        Language::German => "Sagen Sie 'Hallo! LLM-Test erfolgreich.' und nichts anderes.",
+    }
+}
+
+fn split_text_into_chunks(text: &str, max_chars: usize) -> Vec<String> {
+    if text.chars().count() <= max_chars {
+        return vec![text.to_string()];
+    }
+    
+    let mut chunks = Vec::new();
+    let mut current_pos = 0;
+    let chars: Vec<char> = text.chars().collect();
+    
+    while current_pos < chars.len() {
+        let end_pos = std::cmp::min(current_pos + max_chars, chars.len());
+        
+        // Try to find a good breaking point (sentence end, paragraph break, or whitespace)
+        let mut break_pos = end_pos;
+        if end_pos < chars.len() {
+            // Look for sentence end within the chunk
+            let chunk_text: String = chars[current_pos..end_pos].iter().collect();
+            
+            // Look for sentence end
+            if let Some(sentence_end) = chunk_text
+                .rfind(". ")
+                .or_else(|| chunk_text.rfind(".\n"))
+                .or_else(|| chunk_text.rfind("? "))
+                .or_else(|| chunk_text.rfind("! "))
+            {
+                // Convert byte position back to char position
+                let prefix: String = chunk_text.chars().take(sentence_end + 1).collect();
+                break_pos = current_pos + prefix.chars().count();
+            }
+            // If no sentence end found, look for paragraph break
+            else if let Some(para_break) = chunk_text.rfind("\n\n") {
+                let prefix: String = chunk_text.chars().take(para_break + 2).collect();
+                break_pos = current_pos + prefix.chars().count();
+            }
+            // Finally, look for any whitespace
+            else if let Some(space) = chunk_text.rfind(' ') {
+                let prefix: String = chunk_text.chars().take(space + 1).collect();
+                break_pos = current_pos + prefix.chars().count();
+            }
+        }
+        
+        let chunk: String = chars[current_pos..break_pos].iter().collect();
+        chunks.push(chunk.trim().to_string());
+        current_pos = break_pos;
+    }
+    
+    chunks
+}
+
+async fn summarize_chunks(
+    app: AppHandle,
+    chunks: Vec<String>,
+    language: &Language,
+    meeting_id: &str,
+) -> Result<String, String> {
+    let mut chunk_summaries = Vec::new();
+    
+    let chunk_system_prompt = get_chunk_summarization_prompt(language);
+    
+    // Get the app directory for saving chunk summaries
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let meeting_dir = app_dir.join("uploads").join(meeting_id);
+    let chunks_dir = meeting_dir.join("chunks");
+    
+    // Create chunks directory if it doesn't exist
+    if let Err(e) = fs::create_dir_all(&chunks_dir).await {
+        println!("Warning: Failed to create chunks directory: {}", e);
+    }
+    
+    for (i, chunk) in chunks.iter().enumerate() {
+        app.emit("llm-progress", &format!("Summarizing chunk {} of {}", i + 1, chunks.len()))
+            .unwrap();
+        
+        let chunk_summary = generate_text_with_llm(
+            app.clone(),
+            chunk_system_prompt,
+            chunk,
+        ).await?;
+        
+        // Save individual chunk and its summary
+        let chunk_file = chunks_dir.join(format!("chunk_{:03}.txt", i + 1));
+        let summary_file = chunks_dir.join(format!("chunk_{:03}_summary.md", i + 1));
+        
+        if let Err(e) = fs::write(&chunk_file, chunk).await {
+            println!("Warning: Failed to save chunk {}: {}", i + 1, e);
+        }
+        
+        if let Err(e) = fs::write(&summary_file, &chunk_summary).await {
+            println!("Warning: Failed to save chunk summary {}: {}", i + 1, e);
+        }
+        
+        chunk_summaries.push(chunk_summary);
+    }
+    
+    // Save all chunk summaries as one file
+    let all_chunks_summary_file = chunks_dir.join("all_chunk_summaries.md");
+    let all_summaries_content = chunk_summaries
+        .iter()
+        .enumerate()
+        .map(|(i, summary)| format!("# Chunk {} Summary\n\n{}", i + 1, summary))
+        .collect::<Vec<_>>()
+        .join("\n\n---\n\n");
+    
+    if let Err(e) = fs::write(&all_chunks_summary_file, &all_summaries_content).await {
+        println!("Warning: Failed to save all chunk summaries: {}", e);
+    }
+    
+    // Combine all chunk summaries
+    let combined_summaries = chunk_summaries.join("\n\n---\n\n");
+    
+    app.emit("llm-progress", "Combining chunk summaries into final summary...")
+        .unwrap();
+    
+    let final_system_prompt = get_final_summary_prompt(language);
+    
+    generate_text_with_llm(
+        app,
+        final_system_prompt,
+        &combined_summaries,
+    ).await
+}
 
 async fn generate_text_with_llm(
     app: AppHandle,
@@ -21,67 +269,64 @@ async fn generate_text_with_llm(
     // };
 
     // Try external API first if enabled
-    if true {
-        app.emit("llm-progress", "Trying external API...").unwrap();
-        match try_external_api(system_prompt, user_prompt).await {
-            Ok(response) => {
-                app.emit("llm-progress", "External API successful").unwrap();
-                return Ok(response);
-            }
-            Err(e) => {
-                println!("External API failed: {}, falling back to Kalosm", e);
-                app.emit("llm-progress", "External API failed, switching to local model...").unwrap();
-            }
+    app.emit("llm-progress", "Trying external API...").unwrap();
+    match try_external_api(system_prompt, user_prompt).await {
+        Ok(response) => {
+            app.emit("llm-progress", "External API successful").unwrap();
+            return Ok(response);
         }
-    } else {
-        app.emit("llm-progress", "Using local Kalosm model...").unwrap();
+        Err(e) => {
+            println!("External API failed: {}, falling back to Kalosm", e);
+            app.emit("llm-progress", "External API failed, switching to local model...").unwrap();
+            return Err(e);
+        }
     }
 
     // Fallback to Kalosm
-    try_kalosm(app.clone(), system_prompt, user_prompt).await
+    // try_kalosm(app.clone(), system_prompt, user_prompt).await
+}
+
+#[derive(Serialize, Deserialize)]
+struct OllamaResponse {
+    pub model: String,
+    pub created_at: String,
+    pub response: String,
+    pub done: bool,
+    pub done_reason: String,
+    pub context: Vec<i64>,
+    pub total_duration: i64,
+    pub load_duration: i64,
+    pub prompt_eval_count: i64,
+    pub prompt_eval_duration: i64,
+    pub eval_count: i64,
+    pub eval_duration: i64,
 }
 
 async fn try_external_api(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String, String> {
-    let mut client = OpenAIClient::builder()
-        .with_endpoint("http://localhost:11434/v1")
-        .build()
-        .map_err(|e| e.to_string())?;
-
     println!("trying external ollama");
 
-    let req = ChatCompletionRequest::new(
-        "llama3".to_string(),
-        vec![
-            chat_completion::ChatCompletionMessage {
-                role: chat_completion::MessageRole::system,
-                content: chat_completion::Content::Text(system_prompt.to_string()),
-                name: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            chat_completion::ChatCompletionMessage {
-                role: chat_completion::MessageRole::user,
-                content: chat_completion::Content::Text(user_prompt.to_string()),
-                name: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ],
-    );
+    let client = Client::new();
 
-    let result = client
-        .chat_completion(req)
+    // Merge system and user prompts into one string
+    let full_prompt = format!("System: {}\nUser: {}", system_prompt, user_prompt);
+
+    let response = client.post("http://localhost:11434/api/generate")
+        .json(&json!({
+            "model": "llama3.1",
+            "prompt": full_prompt,
+            "stream": false,
+            "num_ctx": 8096
+        }))
+        .send()
         .await
-        .map_err(|e| e.to_string())?;
-
-    result.choices[0]
-        .message
-        .content
-        .clone()
-        .ok_or_else(|| "No content returned from external API".to_string())
+        .map_err(|e| e.to_string())?
+        .json::<OllamaResponse>()
+        .await.map_err(|e| e.to_string())?;
+    
+    return Ok(response.response);
 }
 
 async fn try_kalosm(
@@ -186,14 +431,23 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
 
     app.emit("summarization-started", &meeting_id).unwrap();
 
-    let system_prompt = "
-You are a helpful assistant who combines multiple structured meeting summaries into a single cohesive summary. Preserve the original structure:
+    // Check if transcript is longer than 6_000 characters
+    let content = if transcript.len() > 6_000 {
+        app.emit("llm-progress", "Transcript is long, splitting into chunks for processing...")
+            .unwrap();
+        
+        // Split transcript into manageable chunks
+        let chunks = split_text_into_chunks(&transcript, 6_000);
+        println!("Split transcript into {} chunks", chunks.len());
+        
+        // Summarize chunks and combine
+        summarize_chunks(app.clone(), chunks, &Language::default(), meeting_id).await?
+    } else {
+        // Use direct summarization for shorter transcripts
+        let system_prompt = get_direct_summarization_prompt(&Language::default());
 
-- 📌 Introduction
-- 📝 Detailed Summary (merge and deduplicate bullet points)
-- ✅ Action Items (merge all to-do lists, grouped by person)";
-
-    let content = generate_text_with_llm(app.clone(), system_prompt, &transcript).await?;
+        generate_text_with_llm(app.clone(), system_prompt, &transcript).await?
+    };
 
     state.currently_summarizing = None;
 
@@ -248,7 +502,7 @@ pub async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<S
 
     match meeting_summary {
         Ok(summary) => {
-            let system_prompt = "You are a meeting summarization assistant. generate a concise and relevant meeting name based on the provided summary. In front of the meeting name, add a fitting emoji. The name is supposed to be short (max 6 words), concise and relevant to the meeting summary.";
+            let system_prompt = get_meeting_name_prompt(&Language::default());
 
             let name_str = generate_text_with_llm(app.clone(), system_prompt, &summary).await?;
 
@@ -279,8 +533,8 @@ pub async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<S
 
 #[tauri::command]
 pub async fn test_llm_connection(app: AppHandle) -> Result<String, String> {
-    let test_system_prompt = "You are a helpful assistant. Respond concisely.";
-    let test_user_prompt = "Say 'Hello! LLM test successful.' and nothing else.";
+    let test_system_prompt = get_test_prompt(&Language::default());
+    let test_user_prompt = get_test_user_prompt(&Language::default());
 
     app.emit("llm-progress", "Starting LLM connection test...")
         .unwrap();

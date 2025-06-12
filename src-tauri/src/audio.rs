@@ -228,6 +228,11 @@ pub async fn convert_user_audio(app: AppHandle, audio_path: &str) -> Result<Stri
         ));
     }
 
+    println!(
+        "Audio file exists: {}",
+        audio_path.to_string_lossy()
+    );
+
     // Create New Meeting Directory
     // This will be the directory where the audio file will be stored
     //
@@ -242,6 +247,8 @@ pub async fn convert_user_audio(app: AppHandle, audio_path: &str) -> Result<Stri
             .as_secs()
     );
     let meeting_dir = base_dir.join(&meeting_id);
+
+    println!("Creating meeting directory: {}", meeting_dir.to_string_lossy());
 
     std::fs::create_dir_all(&meeting_dir)
         .map_err(|e| format!("Failed to create meeting directory: {}", e))?;
