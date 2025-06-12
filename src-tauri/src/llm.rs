@@ -137,6 +137,11 @@ Falls eine Person noch nicht in den vorherigen Key Facts erwähnt wurde, erwähn
 {}
 
 Statt Namen zu erwähnen, nutze die ID der Attendees aus den Key Facts (z. B. `[1] fragt …`).
+Bei den Keyfacts sollen folgende Punkte beachtet werden:
+´attendees´ enthält eine Liste von Personen, die am Meeting teilgenommen haben.
+´moderation´ enthält den Namen einer oder meherer Personen, die das Meeting moderiert hat.
+´protocol´ enthält den Namen einer oder meherer Personen, die für das Protokoll zuständig sind.
+´timekeeping´ enthält den Namen einer oder meherer Personen, die für die Zeitmessung verantwortig sind.
 
 Verkürzen Sie nichts zu stark. 
 Fassen Sie möglichst alle relevanten Inhalte zusammen.
