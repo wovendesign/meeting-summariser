@@ -1,11 +1,11 @@
-use std::io::Write;
 use crate::{get_meeting_transcript, AppState, MeetingMetadata};
+use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_http::reqwest::Client;
 use tokio::fs;
 use tokio::sync::Mutex;
-use tauri_plugin_http::reqwest::Client;
 
 #[derive(Debug, Clone)]
 pub enum Language {
@@ -19,7 +19,98 @@ impl Default for Language {
     }
 }
 
-fn get_chunk_summarization_prompt(language: &Language) -> &'static str {
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct Attendee {
+    id: usize,
+    name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct KeyFact {
+    moderation: Option<String>,
+    protocol: Option<String>,
+    timekeeping: Option<String>,
+    attendees: Option<Vec<Attendee>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct Topic {
+    title: String,
+    bullet_points: Vec<String>,
+    sub_topics: Option<Vec<Topic>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct ToDo {
+    assignees: Option<Vec<String>>,
+    task: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct FirstSummaryFormat {
+    key_facts: KeyFact,
+    topics: Vec<Topic>,
+    todos: Option<Vec<ToDo>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct Title {
+    emoji: String,
+    text: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct FinalSummaryFormat {
+    title: Title,
+    key_facts: KeyFact,
+    summary: String,
+    topics: Vec<Topic>,
+    todos: Vec<ToDo>,
+}
+impl MeetingToMarkdown for FinalSummaryFormat {
+    fn to_markdown(&self) -> String {
+        let mut markdown = format!("## {}\n\n", self.title.text);
+        markdown.push_str(&format!("{} {}\n\n", self.title.emoji, self.summary));
+        markdown.push_str("### Key Facts\n");
+        if let Some(moderation) = &self.key_facts.moderation {
+            markdown.push_str(&format!("- **Moderation:** {}\n", moderation));
+        }
+        if let Some(protocol) = &self.key_facts.protocol {
+            markdown.push_str(&format!("- **Protocol:** {}\n", protocol));
+        }
+        if let Some(timekeeping) = &self.key_facts.timekeeping {
+            markdown.push_str(&format!("- **Timekeeping:** {}\n", timekeeping));
+        }
+        if let Some(attendees) = &self.key_facts.attendees {
+            markdown.push_str("- **Attendees:**\n");
+            for attendee in attendees {
+                markdown.push_str(&format!("  - [{}] {}\n", attendee.id, attendee.name));
+            }
+        }
+        markdown.push_str("### Topics\n");
+        for topic in &self.topics {
+            markdown.push_str(&format!("- **{}**\n", topic.title));
+            for bullet in &topic.bullet_points {
+                markdown.push_str(&format!("  - {}\n", bullet));
+            }
+        }
+        markdown.push_str("### To-Dos\n");
+        for todo in &self.todos {
+            markdown.push_str(&format!("- **{}**\n", todo.task));
+            if let Some(assignees) = &todo.assignees {
+                markdown.push_str("  - **Assignees:** ");
+                markdown.push_str(&assignees.join(", "));
+                markdown.push_str("\n");
+            }
+        }
+        markdown
+    }
+}
+
+trait MeetingToMarkdown {
+    fn to_markdown(&self) -> String;
+}
+
+fn get_chunk_summarization_prompt(language: &Language, key_facts: Option<&KeyFact>) -> String {
     match language {
         Language::English => "
 You are a meeting summarization assistant. Summarize the provided meeting transcript chunk in a structured format:
@@ -28,17 +119,37 @@ You are a meeting summarization assistant. Summarize the provided meeting transc
 - 📝 Key Points: Main topics and decisions (use bullet points)
 - ✅ Action Items: Tasks, assignments, or next steps mentioned (format: • [Person]: Task description)
 
-Keep the summary concise but comprehensive. Maintain any speaker names or roles mentioned. if abbreviations are used, do not explain them.",
+Keep the summary concise but comprehensive. Maintain any speaker names or roles mentioned. if abbreviations are used, do not explain them.".to_string(),
 
-        Language::German => "
-Sie sind ein Assistent für Meeting-Zusammenfassungen. Fassen Sie den bereitgestellten Abschnitt eines Meeting-Transkripts möglichst vollständig zusammen:
+        Language::German => {
+            let key_facts_str: String = if let Some(key_facts) = key_facts {
+                json!(key_facts).to_string()
+            } else {
+                "Noch keine vorhandenen Key Facts.".into()
+            };
 
-- 📌 Einführung: Worum ging es zu Beginn? Aufgaben wie Moderation, Protokollführung oder Zeiterfassung sollen nur einmal zu Beginn des Protokolls stichpunktartig aufgeführt werden. Sie sind keine weiterführenden Aktionspunkte und dürfen daher nicht im Abschnitt zu den To-Dos oder nächsten Schritten erscheinen. 
-- 📝 Wichtige Punkte: Alle besprochenen Themen und Argumente mit Verweis darauf, wer es gesagt hat (Format: • Beschreibung des Diskussionspunktes). Finde außerdem Zwischenüberschriften, um den Text besser zu gliedern.
-- ✅ Aktionspunkte, To-Dos, nächste Schritte: Aufgaben, Zuweisungen oder nächste Schritte (Format: • [Name]: Aufgabenbeschreibung) Bei doppelter Vergabe von Aufgaben soll diese kenntlich gemacht werden und auf die Dopplung hingewiesen werden.
+            format!("
+Sie sind ein Assistent für Meeting-Zusammenfassungen. 
+Fassen Sie den bereitgestellten Abschnitt eines Meeting-Transkripts möglichst vollständig zusammen:
 
-Verkürzen Sie nichts zu stark. Fassen Sie möglichst alle relevanten Inhalte zusammen. Der Stil darf sachlich, aber detailliert sein. Halten Sie Redebeiträge einzelner Personen getrennt, wenn möglich. Wenn abkürzungen genannt werden, erklären Sie diese nicht. Inhaltliche Wiederholungen können zusammengefasst werden. Nebensächlichkeiten wie technische Probleme oder persönliche Anekdoten müssen nicht beachtet werden.
-Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an.",
+Falls eine Person noch nicht in den vorherigen Key Facts erwähnt wurde, erwähnen Sie sie im Abschnitt Key Facts.
+
+{}
+
+Statt Namen zu erwähnen, nutze die ID der Attendees aus den Key Facts (z. B. `[1] fragt …`).
+
+Verkürzen Sie nichts zu stark. 
+Fassen Sie möglichst alle relevanten Inhalte zusammen.
+Der Stil darf sachlich, aber detailliert sein. 
+Die `bullet_points` sollen als Stichpunkte geschrieben werden.
+Verben und unnötige Füllwörter sollen vermieden werden.
+Halten Sie Redebeiträge einzelner Personen getrennt, wenn möglich. 
+Wenn abkürzungen genannt werden, erklären Sie diese nicht. 
+Inhaltliche Wiederholungen können zusammengefasst werden. 
+Nebensächlichkeiten wie technische Probleme oder persönliche Anekdoten müssen nicht beachtet werden.
+Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an. 
+Wie der Entscheidungsprozess der Protokollführung ablief und welche Gründe es für diese Entscheidung gab müssen nicht Erwähnt werden.", key_facts_str)
+        },
     }
 }
 
@@ -56,6 +167,7 @@ Preserve speaker names. Use bullet points. Do not use \"Introduction\"/\"Key Poi
         Language::German => "
 Fassen Sie die folgenden Abschnittszusammenfassungen zu einer vollständigen und detaillierten Meeting-Zusammenfassung zusammen. Aufgaben wie Moderation, Protokollführung oder Zeiterfassung sollen zu Beginn des Protokolls stichpunktartig aufgeführt werden. Sie sind keine weiterführenden Aktionspunkte und dürfen daher nicht im Abschnitt zu den To-Dos oder nächsten Schritten erscheinen. 
 
+<<<<<<< HEAD
 Erstellen Sie eine gegliederte Zusammenfassung mit:
 - 📌 Gesamtkontext
 - 🧩 Zusammengeführte Hauptthemen (mit Bullet Points und Namen, wenn vorhanden)
@@ -63,7 +175,14 @@ Erstellen Sie eine gegliederte Zusammenfassung mit:
 Vermeiden Sie Wiederholungen und konzentrieren Sie sich auf die wichtigsten Punkte. 
 Behalten Sie den Charakter des Meetings (z. B. informell, aktivistisch) bei und vermeiden Sie oberflächliche Generalisierungen.
 Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an.",
+=======
+Als `summary` geben Sie eine kurze Zusammenfassung des Meetings an, die den Zweck des Meetings und die wichtigsten Ergebnisse zusammenfasst.
+Es soll möglichst der gesamte Inhalt des Meetings zusammengefasst werden, ohne dass wichtige Details verloren gehen. 
+In erster Linie sollst du die Stichpunkte gruppieren, ohne sie zu verändern oder zu kürzen.
+>>>>>>> 38c39b4fca8b061e41387cfd498d31e3b72715b4
 
+Die `topics` enthalten die wichtigsten Themen des Meetings, die in den einzelnen Abschnitten behandelt wurden. Diese sollten in einer strukturierten Form mit Stichpunkten und gegebenenfalls Unterpunkten dargestellt werden. Kombinieren Sie überlappende Themen und bewahren Sie Details. Vermeiden Sie Wiederholungen und konzentrieren Sie sich auf relevante Punkte. Meetinginterne Inhalte wie technische Probleme oder persönliche Anekdoten müssen nicht beachtet werden.
+Die `todos` enthalten die wichtigsten Aufgaben, die im Meeting besprochen wurden. Falls eine oder mehrere Personen für eine Aufgabe verantwortlich sind, listen Sie diese in der `assignees`-Liste auf. Die Aufgaben sollten klar und präzise formuliert sein. Aufgaben, die nur innerhalb des Meetings besprochen wurden, sollten nicht in den To-Dos auftauchen, sondern nur die Aufgaben, die für die Zukunft relevant sind.",
     }
 }
 
@@ -129,20 +248,20 @@ fn split_text_into_chunks(text: &str, max_chars: usize) -> Vec<String> {
     if text.chars().count() <= max_chars {
         return vec![text.to_string()];
     }
-    
+
     let mut chunks = Vec::new();
     let mut current_pos = 0;
     let chars: Vec<char> = text.chars().collect();
-    
+
     while current_pos < chars.len() {
         let end_pos = std::cmp::min(current_pos + max_chars, chars.len());
-        
+
         // Try to find a good breaking point (sentence end, paragraph break, or whitespace)
         let mut break_pos = end_pos;
         if end_pos < chars.len() {
             // Look for sentence end within the chunk
             let chunk_text: String = chars[current_pos..end_pos].iter().collect();
-            
+
             // Look for sentence end
             if let Some(sentence_end) = chunk_text
                 .rfind(". ")
@@ -165,13 +284,78 @@ fn split_text_into_chunks(text: &str, max_chars: usize) -> Vec<String> {
                 break_pos = current_pos + prefix.chars().count();
             }
         }
-        
+
         let chunk: String = chars[current_pos..break_pos].iter().collect();
         chunks.push(chunk.trim().to_string());
         current_pos = break_pos;
     }
-    
+
     chunks
+}
+
+fn combine_structured_first_summaries(summaries: Vec<FirstSummaryFormat>) -> FirstSummaryFormat {
+    let mut combined = FirstSummaryFormat {
+        key_facts: KeyFact {
+            moderation: None,
+            protocol: None,
+            timekeeping: None,
+            attendees: None,
+        },
+        topics: Vec::new(),
+        todos: None,
+    };
+
+    for summary in summaries {
+        // Combine key facts
+        if let Some(moderation) = summary.key_facts.moderation {
+            combined.key_facts.moderation = Some(moderation);
+        }
+        if let Some(protocol) = summary.key_facts.protocol {
+            combined.key_facts.protocol = Some(protocol);
+        }
+        if let Some(timekeeping) = summary.key_facts.timekeeping {
+            combined.key_facts.timekeeping = Some(timekeeping);
+        }
+        if let Some(attendees) = summary.key_facts.attendees {
+            if combined.key_facts.attendees.is_none() {
+                combined.key_facts.attendees = Some(attendees);
+            } else {
+                // Merge attendees, avoiding duplicates
+                let existing_ids: Vec<usize> = combined
+                    .key_facts
+                    .attendees
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|a| a.id)
+                    .collect();
+                for attendee in attendees {
+                    if !existing_ids.contains(&attendee.id) {
+                        combined
+                            .key_facts
+                            .attendees
+                            .as_mut()
+                            .unwrap()
+                            .push(attendee);
+                    }
+                }
+            }
+        }
+
+        // Combine topics
+        combined.topics.extend(summary.topics);
+
+        // Combine todos
+        if let Some(todos) = summary.todos {
+            if combined.todos.is_none() {
+                combined.todos = Some(todos);
+            } else {
+                combined.todos.as_mut().unwrap().extend(todos);
+            }
+        }
+    }
+
+    combined
 }
 
 async fn summarize_chunks(
@@ -179,11 +363,9 @@ async fn summarize_chunks(
     chunks: Vec<String>,
     language: &Language,
     meeting_id: &str,
-) -> Result<String, String> {
+) -> Result<FinalSummaryFormat, String> {
     let mut chunk_summaries = Vec::new();
-    
-    let chunk_system_prompt = get_chunk_summarization_prompt(language);
-    
+
     // Get the app directory for saving chunk summaries
     let app_dir = app
         .path()
@@ -191,69 +373,137 @@ async fn summarize_chunks(
         .expect("Failed to get app local data directory");
     let meeting_dir = app_dir.join("uploads").join(meeting_id);
     let chunks_dir = meeting_dir.join("chunks");
-    
+
     // Create chunks directory if it doesn't exist
     if let Err(e) = fs::create_dir_all(&chunks_dir).await {
         println!("Warning: Failed to create chunks directory: {}", e);
     }
-    
+
+    let mut key_facts = KeyFact {
+        moderation: None,
+        protocol: None,
+        timekeeping: None,
+        attendees: None,
+    };
+
     for (i, chunk) in chunks.iter().enumerate() {
-        app.emit("llm-progress", &format!("Summarizing chunk {} of {}", i + 1, chunks.len()))
-            .unwrap();
-        
-        let chunk_summary = generate_text_with_llm(
+        app.emit(
+            "llm-progress",
+            &format!("Summarizing chunk {} of {}", i + 1, chunks.len()),
+        )
+        .unwrap();
+
+        let chunk_system_prompt = get_chunk_summarization_prompt(language, Some(&key_facts));
+
+        let chunk_summary_json = generate_text_with_llm(
             app.clone(),
-            chunk_system_prompt,
+            &chunk_system_prompt,
             chunk,
-        ).await?;
-        
+            Some(key_facts.clone()),
+            Some(schema_for!(FirstSummaryFormat)),
+        )
+        .await?;
+
+        let chunk_summary: FirstSummaryFormat = serde_json::from_str(&chunk_summary_json)
+            .map_err(|e| format!("Failed to parse chunk summary JSON: {}", e))?;
+
+        // Update key facts if they are present in the chunk summary.
+        if let Some(moderation) = &chunk_summary.key_facts.moderation {
+            key_facts.moderation = Some(moderation.clone());
+        }
+        if let Some(protocol) = &chunk_summary.key_facts.protocol {
+            key_facts.protocol = Some(protocol.clone());
+        }
+        if let Some(timekeeping) = &chunk_summary.key_facts.timekeeping {
+            key_facts.timekeeping = Some(timekeeping.clone());
+        }
+        if let Some(attendees) = &chunk_summary.key_facts.attendees {
+            if key_facts.attendees.is_none() {
+                key_facts.attendees = Some(attendees.clone());
+            } else {
+                // Merge attendees, avoiding duplicates
+                let mut existing_ids: Vec<usize> = key_facts
+                    .attendees
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|a| a.id)
+                    .collect();
+                for attendee in attendees {
+                    if !existing_ids.contains(&attendee.id) {
+                        existing_ids.push(attendee.id);
+                        key_facts.attendees.as_mut().unwrap().push(attendee.clone());
+                    }
+                }
+            }
+        }
+
         // Save individual chunk and its summary
         let chunk_file = chunks_dir.join(format!("chunk_{:03}.txt", i + 1));
-        let summary_file = chunks_dir.join(format!("chunk_{:03}_summary.md", i + 1));
-        
+        let summary_file = chunks_dir.join(format!("chunk_{:03}_summary.json", i + 1));
+
         if let Err(e) = fs::write(&chunk_file, chunk).await {
             println!("Warning: Failed to save chunk {}: {}", i + 1, e);
         }
-        
-        if let Err(e) = fs::write(&summary_file, &chunk_summary).await {
+
+        let chunk_summary_json = serde_json::to_string_pretty(&chunk_summary)
+            .unwrap_or_else(|_| "Failed to serialize chunk summary".to_string());
+        if let Err(e) = fs::write(&summary_file, &chunk_summary_json).await {
             println!("Warning: Failed to save chunk summary {}: {}", i + 1, e);
         }
-        
+
         chunk_summaries.push(chunk_summary);
     }
-    
+
     // Save all chunk summaries as one file
     let all_chunks_summary_file = chunks_dir.join("all_chunk_summaries.md");
     let all_summaries_content = chunk_summaries
         .iter()
         .enumerate()
-        .map(|(i, summary)| format!("# Chunk {} Summary\n\n{}", i + 1, summary))
+        .map(|(i, summary)| {
+            let summary_json = serde_json::to_string_pretty(summary)
+                .unwrap_or_else(|_| "Failed to serialize summary".to_string());
+            format!("# Chunk {} Summary\n\n{}", i + 1, summary_json)
+        })
         .collect::<Vec<_>>()
         .join("\n\n---\n\n");
-    
+
     if let Err(e) = fs::write(&all_chunks_summary_file, &all_summaries_content).await {
         println!("Warning: Failed to save all chunk summaries: {}", e);
     }
-    
-    // Combine all chunk summaries
-    let combined_summaries = chunk_summaries.join("\n\n---\n\n");
-    
-    app.emit("llm-progress", "Combining chunk summaries into final summary...")
-        .unwrap();
-    
+
+    app.emit(
+        "llm-progress",
+        "Combining chunk summaries into final summary...",
+    )
+    .unwrap();
+
     let final_system_prompt = get_final_summary_prompt(language);
-    
-    generate_text_with_llm(
+
+    let final_string = generate_text_with_llm(
         app,
         final_system_prompt,
-        &combined_summaries,
-    ).await
+        json!(combine_structured_first_summaries(chunk_summaries))
+            .to_string()
+            .as_str(),
+        None,
+        Some(schema_for!(FinalSummaryFormat)),
+    )
+    .await?;
+
+    let final_summary: FinalSummaryFormat = serde_json::from_str(&final_string)
+        .map_err(|e| format!("Failed to parse final summary JSON: {}", e))?;
+
+    return Ok(final_summary);
 }
 
 async fn generate_text_with_llm(
     app: AppHandle,
     system_prompt: &str,
     user_prompt: &str,
+    _key_facts: Option<KeyFact>,
+    // What structure to send? FirstSummaryFormat or FinalSummaryFormat?
+    structure: Option<schemars::Schema>,
 ) -> Result<String, String> {
     use std::time::Instant;
     
@@ -268,9 +518,13 @@ async fn generate_text_with_llm(
 
     // Try external API first if enabled
     app.emit("llm-progress", "Trying external API...").unwrap();
+<<<<<<< HEAD
     let api_start = Instant::now();
     
     match try_external_api(system_prompt, user_prompt).await {
+=======
+    match try_external_api(system_prompt, user_prompt, structure).await {
+>>>>>>> 38c39b4fca8b061e41387cfd498d31e3b72715b4
         Ok(response) => {
             let api_duration = api_start.elapsed();
             let total_duration = start_time.elapsed();
@@ -280,10 +534,19 @@ async fn generate_text_with_llm(
             return Ok(response);
         }
         Err(e) => {
+<<<<<<< HEAD
             let api_duration = api_start.elapsed();
             println!("❌ External API failed after {:.2}s: {}, falling back to Kalosm", 
                 api_duration.as_secs_f64(), e);
             app.emit("llm-progress", "External API failed, switching to local model...").unwrap();
+=======
+            println!("External API failed: {}, falling back to Kalosm", e);
+            app.emit(
+                "llm-progress",
+                "External API failed, switching to local model...",
+            )
+            .unwrap();
+>>>>>>> 38c39b4fca8b061e41387cfd498d31e3b72715b4
             return Err(e);
         }
     }
@@ -311,6 +574,7 @@ struct OllamaResponse {
 async fn try_external_api(
     system_prompt: &str,
     user_prompt: &str,
+    structure: Option<schemars::Schema>,
 ) -> Result<String, String> {
     println!("trying external ollama");
 
@@ -319,19 +583,30 @@ async fn try_external_api(
     // Merge system and user prompts into one string
     let full_prompt = format!("System: {}\nUser: {}", system_prompt, user_prompt);
 
-    let response = client.post("http://localhost:11434/api/generate")
-        .json(&json!({
-            "model": "llama3.1",
-            "prompt": full_prompt,
-            "stream": false,
-            "num_ctx": 8096
-        }))
+    let mut json = json!({
+        "model": "llama3.1",
+        "prompt": full_prompt,
+        "stream": false,
+        "num_ctx": 8096,
+    });
+
+    if let Some(schema) = structure {
+        json.as_object_mut().unwrap().insert(
+            "format".to_string(),
+            <serde_json::Value>::from(schema.clone()),
+        );
+    }
+
+    let response = client
+        .post("http://localhost:11434/api/generate")
+        .json(&json)
         .send()
         .await
         .map_err(|e| e.to_string())?
         .json::<OllamaResponse>()
-        .await.map_err(|e| e.to_string())?;
-    
+        .await
+        .map_err(|e| e.to_string())?;
+
     return Ok(response.response);
 }
 
@@ -439,20 +714,25 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
 
     // Check if transcript is longer than 6_000 characters
     let content = if transcript.len() > 10_000 {
-        app.emit("llm-progress", "Transcript is long, splitting into chunks for processing...")
-            .unwrap();
-        
+        app.emit(
+            "llm-progress",
+            "Transcript is long, splitting into chunks for processing...",
+        )
+        .unwrap();
+
         // Split transcript into manageable chunks
         let chunks = split_text_into_chunks(&transcript, 10_000);
         println!("Split transcript into {} chunks", chunks.len());
-        
+
         // Summarize chunks and combine
         summarize_chunks(app.clone(), chunks, &Language::default(), meeting_id).await?
     } else {
         // Use direct summarization for shorter transcripts
         let system_prompt = get_direct_summarization_prompt(&Language::default());
 
-        generate_text_with_llm(app.clone(), system_prompt, &transcript).await?
+        // TODO
+        return Err("Direct summarization is not implemented yet.".to_string());
+        // generate_text_with_llm(app.clone(), system_prompt, &transcript, None).await?
     };
 
     state.currently_summarizing = None;
@@ -463,13 +743,21 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
         .app_local_data_dir()
         .expect("Failed to get app local data directory");
     let summary_path = app_dir.join("uploads").join(meeting_id).join("summary.md");
+    let summary_json_path = app_dir
+        .join("uploads")
+        .join(meeting_id)
+        .join("summary.json");
 
-    fs::write(summary_path, content.clone())
+    fs::write(summary_path, content.to_markdown())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    fs::write(summary_json_path, serde_json::to_string(&content).unwrap())
         .await
         .map_err(|e| e.to_string())?;
 
     generate_meeting_name(app.clone(), meeting_id).await?;
-    Ok(content)
+    Ok(content.to_markdown())
 }
 
 #[tauri::command]
@@ -488,12 +776,19 @@ pub async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<Str
         .app_local_data_dir()
         .expect("Failed to get app local data directory");
     let base_dir = app_dir.join("uploads").join(meeting_id);
-    let summary_path = base_dir.join("summary.md");
+    let summary_path = base_dir.join("summary.json");
 
     // read summary file
-    fs::read_to_string(summary_path)
+    let summary_json = fs::read_to_string(summary_path)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    let summary: FinalSummaryFormat =
+        serde_json::from_str(&summary_json).map_err(|e| e.to_string())?;
+
+    let markdown = summary.to_markdown();
+
+    Ok(markdown)
 }
 
 #[tauri::command]
@@ -510,7 +805,8 @@ pub async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<S
         Ok(summary) => {
             let system_prompt = get_meeting_name_prompt(&Language::default());
 
-            let name_str = generate_text_with_llm(app.clone(), system_prompt, &summary).await?;
+            let name_str =
+                generate_text_with_llm(app.clone(), system_prompt, &summary, None, None).await?;
 
             // Add it to meeting.json if it exists
             let app_dir = app
@@ -548,7 +844,14 @@ pub async fn test_llm_connection(app: AppHandle) -> Result<String, String> {
     app.emit("llm-download-progress", 0).unwrap();
     app.emit("llm-loading-progress", 0).unwrap();
 
-    let result = generate_text_with_llm(app.clone(), test_system_prompt, test_user_prompt).await;
+    let result = generate_text_with_llm(
+        app.clone(),
+        test_system_prompt,
+        test_user_prompt,
+        None,
+        None,
+    )
+    .await;
 
     match result {
         Ok(response) => {
