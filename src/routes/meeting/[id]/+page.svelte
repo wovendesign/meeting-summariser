@@ -39,6 +39,13 @@
 
   let isTranscribing: String | null = $state(null);
   let isSummarizing: String | null = $state(null);
+  
+  // Transcription progress tracking
+  let transcriptionProgress = $state({
+    currentChunk: 0,
+    totalChunks: 0,
+    isActive: false
+  });
 
   import { readFile, BaseDirectory } from "@tauri-apps/plugin-fs";
 
@@ -134,19 +141,41 @@
       if (event.payload === "transcription-started") {
         toast.info("Transcription started for meeting ID: " + meetingId);
         isTranscribing = meetingId;
+        transcriptionProgress.isActive = true;
       } else if (event.payload === "transcription-finished") {
         toast.success("Transcription finished for meeting ID: " + meetingId);
         isTranscribing = null;
+        transcriptionProgress.isActive = false;
+        transcriptionProgress.currentChunk = 0;
+        transcriptionProgress.totalChunks = 0;
         getTranscript();
         getTranscriptJson();
         getSummary(true);
       }
     });
+
+    // Listen for whisperx progress events
+    const whisperxStartListener = await listen<number>("whisperx-start", (event) => {
+      console.log("WhisperX started with", event.payload, "chunks");
+      transcriptionProgress.totalChunks = event.payload;
+      transcriptionProgress.currentChunk = 0;
+      transcriptionProgress.isActive = true;
+    });
+
+    const whisperxProgressListener = await listen<number>("whisperx-progress", (event) => {
+      console.log("WhisperX progress:", event.payload + 1, "of", transcriptionProgress.totalChunks);
+      transcriptionProgress.currentChunk = event.payload + 1; // +1 because backend sends 0-based index
+    });
+
+    // Store the listeners for cleanup
+    whisperxListeners = [whisperxStartListener, whisperxProgressListener];
   });
 
   onDestroy(() => {
     summarizationListener();
     transcriptionListener();
+    // Clean up whisperx listeners
+    whisperxListeners.forEach(listener => listener());
   });
 
   async function checkTranscriptionStatus() {
@@ -285,6 +314,7 @@
 
   let summarizationListener: () => void;
   let transcriptionListener: () => void;
+  let whisperxListeners: (() => void)[] = [];
 </script>
 
 <Toaster />
@@ -381,23 +411,41 @@
       </Card.Header>
       <Card.Content>
         {#if isTranscribing === meetingId}
-          <div class={"flex-wrap gap-2 animate-pulse flex"}>
-            <div class="h-4 w-12 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-32 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-28 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-12 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-32 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-28 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+          <div class="space-y-4">
+            {#if transcriptionProgress.isActive && transcriptionProgress.totalChunks > 0}
+              <!-- Progress bar and text -->
+              <div class="space-y-2">
+                <div class="flex justify-between text-sm">
+                  <span>Transcribing Chunk {transcriptionProgress.currentChunk} of {transcriptionProgress.totalChunks}</span>
+                  <span>{Math.round((transcriptionProgress.currentChunk / transcriptionProgress.totalChunks) * 100)}%</span>
+                </div>
+                <div class="w-full bg-muted rounded-full h-2">
+                  <div 
+                    class="bg-primary h-2 rounded-full transition-all duration-300 ease-in-out" 
+                    style="width: {(transcriptionProgress.currentChunk / transcriptionProgress.totalChunks) * 100}%"
+                  ></div>
+                </div>
+              </div>
+            {/if}
+            <!-- Animated placeholder -->
+            <div class={"flex-wrap gap-2 animate-pulse flex"}>
+              <div class="h-4 w-12 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-32 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-28 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-12 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-32 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-28 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+            </div>
           </div>
         {:else if isTranscribing && isTranscribing !== meetingId}
           <p class="text-sm text-muted-foreground">

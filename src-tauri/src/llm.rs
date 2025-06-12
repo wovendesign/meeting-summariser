@@ -106,7 +106,7 @@ impl MeetingToMarkdown for FinalSummaryFormat {
             if let Some(assignees) = &todo.assignees {
                 markdown.push_str("  - **Assignees:** ");
                 markdown.push_str(&assignees.join(", "));
-                markdown.push_str("\n");
+                markdown.push('\n');
             }
         }
         markdown

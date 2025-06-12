@@ -559,8 +559,11 @@ pub async fn transcribe_with_chunking(
     let mut all_transcripts = Vec::new();
     let mut all_json_parts = Vec::new();
 
+    app.emit("whisperx-start", chunks.len()).unwrap();
+
     for (i, chunk) in chunks.iter().enumerate() {
         println!("Transcribing chunk {} of {}", i + 1, chunks.len());
+        app.emit("whisperx-progress", i).unwrap();
 
         let chunk_path = std::path::Path::new(&chunk.file_path);
         let chunk_dir = chunk_path.parent().unwrap(); // Run whisperx on this chunk
