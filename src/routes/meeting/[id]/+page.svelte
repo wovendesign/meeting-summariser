@@ -272,20 +272,6 @@
     }
   }
 
-  async function generateMeetingName() {
-    generatingName = true;
-    try {
-      name = await invoke("generate_meeting_name", {
-        meetingId: meetingId,
-      });
-      console.log(name);
-      generatingName = false;
-    } catch (error) {
-      toast.error("Error generating meeting name: " + error);
-      generatingName = false;
-    }
-  }
-
   async function reloadTranscript() {
     try {
       await getTranscript();
@@ -346,10 +332,10 @@
             </Dialog.Content>
           </Dialog.Root>
         </DropdownMenu.Item>
-        <DropdownMenu.Item onclick={generateMeetingName}>
+        <!-- <DropdownMenu.Item onclick={generateMeetingName}>
           <RefreshCcw />
           <span>Re-Generate Name</span>
-        </DropdownMenu.Item>
+        </DropdownMenu.Item> -->
         <DropdownMenu.Item
           onclick={() => {
             alert("This feature is not implemented yet.");

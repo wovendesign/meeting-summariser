@@ -58,6 +58,13 @@ struct Title {
     emoji: String,
     text: String,
 }
+
+impl Title {
+    fn to_string(&self) -> String {
+        format!("{} {}", self.emoji, self.text)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct FinalSummaryFormat {
     title: Title,
@@ -68,9 +75,9 @@ struct FinalSummaryFormat {
 }
 impl MeetingToMarkdown for FinalSummaryFormat {
     fn to_markdown(&self) -> String {
-        let mut markdown = format!("## {}\n\n", self.title.text);
-        markdown.push_str(&format!("{} {}\n\n", self.title.emoji, self.summary));
-        markdown.push_str("### Key Facts\n");
+        let mut markdown = format!("# {}\n\n", self.title.text);
+        markdown.push_str(self.summary.as_str());
+        markdown.push_str("## Key Facts\n");
         if let Some(moderation) = &self.key_facts.moderation {
             markdown.push_str(&format!("- **Moderation:** {}\n", moderation));
         }
@@ -83,19 +90,19 @@ impl MeetingToMarkdown for FinalSummaryFormat {
         if let Some(attendees) = &self.key_facts.attendees {
             markdown.push_str("- **Attendees:**\n");
             for attendee in attendees {
-                markdown.push_str(&format!("  - [{}] {}\n", attendee.id, attendee.name));
+                markdown.push_str(&format!("  - {}\n", attendee.name));
             }
         }
-        markdown.push_str("### Topics\n");
+        markdown.push_str("## Topics\n");
         for topic in &self.topics {
-            markdown.push_str(&format!("- **{}**\n", topic.title));
+            markdown.push_str(&format!("### {} \n", topic.title));
             for bullet in &topic.bullet_points {
-                markdown.push_str(&format!("  - {}\n", bullet));
+                markdown.push_str(&format!("- {}\n", bullet));
             }
         }
-        markdown.push_str("### To-Dos\n");
+        markdown.push_str("## To-Dos\n");
         for todo in &self.todos {
-            markdown.push_str(&format!("- **{}**\n", todo.task));
+            markdown.push_str(&format!("### {} \n", todo.task));
             if let Some(assignees) = &todo.assignees {
                 markdown.push_str("  - **Assignees:** ");
                 markdown.push_str(&assignees.join(", "));
@@ -496,10 +503,10 @@ async fn generate_text_with_llm(
     structure: Option<schemars::Schema>,
 ) -> Result<String, String> {
     use std::time::Instant;
-    
+
     let start_time = Instant::now();
     println!("🚀 Starting LLM text generation...");
-    
+
     // let state = app.state::<Mutex<AppState>>();
     // let config = {
     //     let state = state.lock().await;
@@ -515,13 +522,14 @@ async fn generate_text_with_llm(
         }
         Err(e) => {
             println!("External API failed: {}, falling back to Kalosm", e);
-            app.emit("llm-progress", "External API failed, switching to local model...").unwrap();
+            app.emit(
+                "llm-progress",
+                "External API failed, switching to local model...",
+            )
+            .unwrap();
             return Err(e);
         }
     }
-
-    // Fallback to Kalosm
-    // try_kalosm(app.clone(), system_prompt, user_prompt).await
 }
 
 #[derive(Serialize, Deserialize)]
@@ -578,84 +586,6 @@ async fn try_external_api(
 
     return Ok(response.response);
 }
-
-// async fn try_kalosm(
-//     app: AppHandle,
-//     system_prompt: &str,
-//     user_prompt: &str,
-// ) -> Result<String, String> {
-//     use kalosm::language::*;
-//     use std::sync::Arc;
-//     use std::time::Duration;
-//     use tokio::time::timeout;
-
-//     println!("Starting kalosm...");
-
-//     app.emit("llm-progress", "Initializing Kalosm model...")
-//         .unwrap();
-
-//     println!("Downloading Kalosm model...\n");
-
-//     // Clone app handle for use in the closure
-//     let app_clone = app.clone();
-
-//     // Try to load the model with progress tracking
-//     let model = Llama::builder()
-//         .with_source(LlamaSource::llama_3_2_1b_chat())
-//         .build_with_loading_handler(|progress| match progress {
-//             ModelLoadingProgress::Downloading { source, progress } => {
-//                 // progress.progress is already a fraction between 0 and 1
-//                 let percentage = progress.progress / progress.size;
-//                 let elapsed = progress.start_time.elapsed().as_secs_f32();
-//                 let message = format!("Downloading model: {}%", percentage);
-//                 print!("\rDownloading the model ({}%) MBs Downloaded: {}", percentage, progress.progress / 1000000);
-//                 std::io::stdout().flush().expect("TODO: panic message");
-//                 // println!("Downloading file {source} {percentage}% ({elapsed:.1}s)");
-//             }
-//             ModelLoadingProgress::Loading { progress } => {
-//                 // progress is already a fraction between 0 and 1
-//                 let progress_percent = (progress * 100.0).clamp(0.0, 100.0) as u32;
-//                 let message = format!("Loading model: {}%", progress_percent);
-//                 println!("Loading model {progress_percent}%");
-//             }
-//         })
-//         .await
-//         .map_err(|e| format!("Failed to load Kalosm model: {}", e))?;
-
-//     // Signal completion of model loading
-//     app.emit("llm-download-progress", 100).unwrap();
-//     app.emit("llm-loading-progress", 100).unwrap();
-//     app.emit(
-//         "llm-progress",
-//         "Model loaded successfully! Preparing chat session...",
-//     )
-//     .unwrap();
-//     println!("Preparing chat session with Kalosm model...");
-
-//     // Generate response with timeout
-//     let response_result = timeout(Duration::from_secs(120), async {
-//         app.emit("llm-progress", "Generating response...").unwrap();
-
-//         let chat = model.chat();
-
-//         let response = chat
-//             .with_system_prompt(system_prompt)
-//             .add_message(user_prompt)
-//             .await
-//             .map_err(|e| e.to_string())?;
-
-//         app.emit("llm-progress", "Response generated successfully!")
-//             .unwrap();
-//         Ok::<String, String>(response)
-//     })
-//     .await;
-
-//     match response_result {
-//         Ok(Ok(response)) => Ok(response),
-//         Ok(Err(e)) => Err(e),
-//         Err(_) => Err("Response generation timed out after 2 minutes.".to_string()),
-//     }
-// }
 
 #[tauri::command]
 pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
@@ -725,7 +655,8 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
         .await
         .map_err(|e| e.to_string())?;
 
-    generate_meeting_name(app.clone(), meeting_id).await?;
+    save_meeting_name(&app, meeting_id, content.title.to_string())?;
+
     Ok(content.to_markdown())
 }
 
@@ -760,46 +691,24 @@ pub async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<Str
     Ok(markdown)
 }
 
-#[tauri::command]
-pub async fn generate_meeting_name(app: AppHandle, meeting_id: &str) -> Result<String, String> {
-    println!("Generating meeting name for {}", meeting_id);
-    // notify frontend that generation has started
-    app.emit("meeting-name-generation-started", meeting_id)
-        .unwrap();
+fn save_meeting_name(app: &AppHandle, meeting_id: &str, name: String) -> Result<(), String> {
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let metadata_path = app_dir
+        .join("uploads")
+        .join(meeting_id)
+        .join("meeting.json");
 
-    // Get Meeting Summary
-    let meeting_summary = get_meeting_summary(app.clone(), meeting_id).await;
+    let metadata = MeetingMetadata {
+        id: meeting_id.to_string(),
+        name: Some(name),
+    };
+    let json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
+    std::fs::write(metadata_path, json).map_err(|e| e.to_string())?;
 
-    match meeting_summary {
-        Ok(summary) => {
-            let system_prompt = get_meeting_name_prompt(&Language::default());
-
-            let name_str =
-                generate_text_with_llm(app.clone(), system_prompt, &summary, None, None).await?;
-
-            // Add it to meeting.json if it exists
-            let app_dir = app
-                .path()
-                .app_local_data_dir()
-                .expect("Failed to get app local data directory");
-            let metadata_path = app_dir
-                .join("uploads")
-                .join(meeting_id)
-                .join("meeting.json");
-
-            let metadata = MeetingMetadata {
-                id: meeting_id.to_string(),
-                name: Some(name_str.clone()),
-            };
-            let json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
-            fs::write(metadata_path, json)
-                .await
-                .map_err(|e| e.to_string())?;
-
-            Ok(name_str)
-        }
-        Err(e) => Err(format!("Failed to get meeting summary: {}", e)),
-    }
+    Ok(())
 }
 
 #[tauri::command]

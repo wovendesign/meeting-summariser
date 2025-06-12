@@ -217,7 +217,7 @@ pub fn run() {
             get_meeting_transcript_json,
             get_meeting_metadata,
             llm::get_meeting_summary,
-            llm::generate_meeting_name,            llm::generate_summary,
+            llm::generate_summary,
             llm::is_summarizing,
             llm::test_llm_connection,
             whisperx::check_python_installation,
