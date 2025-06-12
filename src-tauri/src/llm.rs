@@ -1,13 +1,10 @@
 use std::io::Write;
-use crate::{get_meeting_transcript, AppState, LlmConfig, MeetingMetadata};
-use kalosm::language::*;
+use crate::{get_meeting_transcript, AppState, MeetingMetadata};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
-use tauri::http::request;
 use tokio::fs;
 use tokio::sync::Mutex;
-use tauri_plugin_http::reqwest;
 use tauri_plugin_http::reqwest::Client;
 
 #[derive(Debug, Clone)]
@@ -36,11 +33,12 @@ Keep the summary concise but comprehensive. Maintain any speaker names or roles 
         Language::German => "
 Sie sind ein Assistent für Meeting-Zusammenfassungen. Fassen Sie den bereitgestellten Abschnitt eines Meeting-Transkripts möglichst vollständig zusammen:
 
-- 📌 Einführung: Worum ging es zu Beginn?
-- 📝 Wichtige Punkte: Alle besprochenen Themen und Argumente mit Sprecherbezug (verwenden Sie Aufzählungspunkte).
-- ✅ Aktionspunkte: Aufgaben, Zuweisungen oder nächste Schritte (Format: • [Person]: Aufgabenbeschreibung)
+- 📌 Einführung: Worum ging es zu Beginn? Aufgaben wie Moderation, Protokollführung oder Zeiterfassung sollen nur einmal zu Beginn des Protokolls stichpunktartig aufgeführt werden. Sie sind keine weiterführenden Aktionspunkte und dürfen daher nicht im Abschnitt zu den To-Dos oder nächsten Schritten erscheinen. 
+- 📝 Wichtige Punkte: Alle besprochenen Themen und Argumente mit Verweis darauf, wer es gesagt hat (Format: • Beschreibung des Diskussionspunktes). Finde außerdem Zwischenüberschriften, um den Text besser zu gliedern.
+- ✅ Aktionspunkte, To-Dos, nächste Schritte: Aufgaben, Zuweisungen oder nächste Schritte (Format: • [Name]: Aufgabenbeschreibung) Bei doppelter Vergabe von Aufgaben soll diese kenntlich gemacht werden und auf die Dopplung hingewiesen werden.
 
-Verkürzen Sie nichts zu stark. Fassen Sie möglichst alle relevanten Inhalte zusammen. Der Stil darf sachlich, aber detailliert sein. Halten Sie Redebeiträge einzelner Personen getrennt, wenn möglich. Wenn abkürzungen genannt werden, erklären Sie diese nicht.",
+Verkürzen Sie nichts zu stark. Fassen Sie möglichst alle relevanten Inhalte zusammen. Der Stil darf sachlich, aber detailliert sein. Halten Sie Redebeiträge einzelner Personen getrennt, wenn möglich. Wenn abkürzungen genannt werden, erklären Sie diese nicht. Inhaltliche Wiederholungen können zusammengefasst werden. Nebensächlichkeiten wie technische Probleme oder persönliche Anekdoten müssen nicht beachtet werden.
+Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an.",
     }
 }
 
@@ -56,18 +54,13 @@ Summarize the following transcript chunk. Focus on:
 Preserve speaker names. Use bullet points. Do not use \"Introduction\"/\"Key Points\"/\"Action Items\" as section headers.",
 
         Language::German => "
-Fassen Sie die folgenden Abschnittszusammenfassungen zu einer vollständigen und detaillierten Meeting-Zusammenfassung zusammen.
-
-Berücksichtigen Sie:
-1. Was wurde besprochen? Geben Sie zentrale Aussagen, Argumente und Meinungen mit Sprecherbezug wieder.
-2. Was wurde entschieden? Nennen Sie explizit getroffene Beschlüsse oder Konsensentwicklungen.
-3. Was sind konkrete nächste Schritte?
+Fassen Sie die folgenden Abschnittszusammenfassungen zu einer vollständigen und detaillierten Meeting-Zusammenfassung zusammen. Aufgaben wie Moderation, Protokollführung oder Zeiterfassung sollen zu Beginn des Protokolls stichpunktartig aufgeführt werden. Sie sind keine weiterführenden Aktionspunkte und dürfen daher nicht im Abschnitt zu den To-Dos oder nächsten Schritten erscheinen. 
 
 Erstellen Sie eine gegliederte Zusammenfassung mit:
 - 📌 Gesamtkontext
 - 🧩 Zusammengeführte Hauptthemen (mit Bullet Points und Namen, wenn vorhanden)
-- ✅ Aktionspunkte nach Personen gruppiert (Format: • [Name]: Aufgabenbeschreibung)
-
+- ✅ Aktionspunkte, To-Dos, nächste Schritte nach Personen gruppiert (Format: • [Name]: Aufgabenbeschreibung)
+Vermeiden Sie Wiederholungen und konzentrieren Sie sich auf die wichtigsten Punkte. 
 Behalten Sie den Charakter des Meetings (z. B. informell, aktivistisch) bei und vermeiden Sie oberflächliche Generalisierungen.",
 
     }
@@ -105,7 +98,7 @@ Sie erhalten Zusammenfassungen von Transkript-*Abschnitten* aus einem einzigen M
   - Gruppieren Sie nach Person, wenn möglich.
   - Verwenden Sie dieses Format: • [Name]: Aufgabenbeschreibung
 
-Wiederholen Sie NICHT die Überschriften aus den Eingabe-Abschnitten. Konzentrieren Sie sich auf *Integration*, *Prägnanz* und *Vollständigkeit*. Vermeiden Sie allgemeine Füllphrasen wie \"der Sprecher diskutiert\".",
+Wiederholen Sie NICHT die Überschriften aus den Eingabe-Abschnitten.",
     }
 }
 
@@ -329,83 +322,83 @@ async fn try_external_api(
     return Ok(response.response);
 }
 
-async fn try_kalosm(
-    app: AppHandle,
-    system_prompt: &str,
-    user_prompt: &str,
-) -> Result<String, String> {
-    use kalosm::language::*;
-    use std::sync::Arc;
-    use std::time::Duration;
-    use tokio::time::timeout;
+// async fn try_kalosm(
+//     app: AppHandle,
+//     system_prompt: &str,
+//     user_prompt: &str,
+// ) -> Result<String, String> {
+//     use kalosm::language::*;
+//     use std::sync::Arc;
+//     use std::time::Duration;
+//     use tokio::time::timeout;
 
-    println!("Starting kalosm...");
+//     println!("Starting kalosm...");
 
-    app.emit("llm-progress", "Initializing Kalosm model...")
-        .unwrap();
+//     app.emit("llm-progress", "Initializing Kalosm model...")
+//         .unwrap();
 
-    println!("Downloading Kalosm model...\n");
+//     println!("Downloading Kalosm model...\n");
 
-    // Clone app handle for use in the closure
-    let app_clone = app.clone();
+//     // Clone app handle for use in the closure
+//     let app_clone = app.clone();
 
-    // Try to load the model with progress tracking
-    let model = Llama::builder()
-        .with_source(LlamaSource::llama_3_2_1b_chat())
-        .build_with_loading_handler(|progress| match progress {
-            ModelLoadingProgress::Downloading { source, progress } => {
-                // progress.progress is already a fraction between 0 and 1
-                let percentage = progress.progress / progress.size;
-                let elapsed = progress.start_time.elapsed().as_secs_f32();
-                let message = format!("Downloading model: {}%", percentage);
-                print!("\rDownloading the model ({}%) MBs Downloaded: {}", percentage, progress.progress / 1000000);
-                std::io::stdout().flush().expect("TODO: panic message");
-                // println!("Downloading file {source} {percentage}% ({elapsed:.1}s)");
-            }
-            ModelLoadingProgress::Loading { progress } => {
-                // progress is already a fraction between 0 and 1
-                let progress_percent = (progress * 100.0).clamp(0.0, 100.0) as u32;
-                let message = format!("Loading model: {}%", progress_percent);
-                println!("Loading model {progress_percent}%");
-            }
-        })
-        .await
-        .map_err(|e| format!("Failed to load Kalosm model: {}", e))?;
+//     // Try to load the model with progress tracking
+//     let model = Llama::builder()
+//         .with_source(LlamaSource::llama_3_2_1b_chat())
+//         .build_with_loading_handler(|progress| match progress {
+//             ModelLoadingProgress::Downloading { source, progress } => {
+//                 // progress.progress is already a fraction between 0 and 1
+//                 let percentage = progress.progress / progress.size;
+//                 let elapsed = progress.start_time.elapsed().as_secs_f32();
+//                 let message = format!("Downloading model: {}%", percentage);
+//                 print!("\rDownloading the model ({}%) MBs Downloaded: {}", percentage, progress.progress / 1000000);
+//                 std::io::stdout().flush().expect("TODO: panic message");
+//                 // println!("Downloading file {source} {percentage}% ({elapsed:.1}s)");
+//             }
+//             ModelLoadingProgress::Loading { progress } => {
+//                 // progress is already a fraction between 0 and 1
+//                 let progress_percent = (progress * 100.0).clamp(0.0, 100.0) as u32;
+//                 let message = format!("Loading model: {}%", progress_percent);
+//                 println!("Loading model {progress_percent}%");
+//             }
+//         })
+//         .await
+//         .map_err(|e| format!("Failed to load Kalosm model: {}", e))?;
 
-    // Signal completion of model loading
-    app.emit("llm-download-progress", 100).unwrap();
-    app.emit("llm-loading-progress", 100).unwrap();
-    app.emit(
-        "llm-progress",
-        "Model loaded successfully! Preparing chat session...",
-    )
-    .unwrap();
-    println!("Preparing chat session with Kalosm model...");
+//     // Signal completion of model loading
+//     app.emit("llm-download-progress", 100).unwrap();
+//     app.emit("llm-loading-progress", 100).unwrap();
+//     app.emit(
+//         "llm-progress",
+//         "Model loaded successfully! Preparing chat session...",
+//     )
+//     .unwrap();
+//     println!("Preparing chat session with Kalosm model...");
 
-    // Generate response with timeout
-    let response_result = timeout(Duration::from_secs(120), async {
-        app.emit("llm-progress", "Generating response...").unwrap();
+//     // Generate response with timeout
+//     let response_result = timeout(Duration::from_secs(120), async {
+//         app.emit("llm-progress", "Generating response...").unwrap();
 
-        let chat = model.chat();
+//         let chat = model.chat();
 
-        let response = chat
-            .with_system_prompt(system_prompt)
-            .add_message(user_prompt)
-            .await
-            .map_err(|e| e.to_string())?;
+//         let response = chat
+//             .with_system_prompt(system_prompt)
+//             .add_message(user_prompt)
+//             .await
+//             .map_err(|e| e.to_string())?;
 
-        app.emit("llm-progress", "Response generated successfully!")
-            .unwrap();
-        Ok::<String, String>(response)
-    })
-    .await;
+//         app.emit("llm-progress", "Response generated successfully!")
+//             .unwrap();
+//         Ok::<String, String>(response)
+//     })
+//     .await;
 
-    match response_result {
-        Ok(Ok(response)) => Ok(response),
-        Ok(Err(e)) => Err(e),
-        Err(_) => Err("Response generation timed out after 2 minutes.".to_string()),
-    }
-}
+//     match response_result {
+//         Ok(Ok(response)) => Ok(response),
+//         Ok(Err(e)) => Err(e),
+//         Err(_) => Err("Response generation timed out after 2 minutes.".to_string()),
+//     }
+// }
 
 #[tauri::command]
 pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
@@ -432,12 +425,12 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
     app.emit("summarization-started", &meeting_id).unwrap();
 
     // Check if transcript is longer than 6_000 characters
-    let content = if transcript.len() > 6_000 {
+    let content = if transcript.len() > 10_000 {
         app.emit("llm-progress", "Transcript is long, splitting into chunks for processing...")
             .unwrap();
         
         // Split transcript into manageable chunks
-        let chunks = split_text_into_chunks(&transcript, 6_000);
+        let chunks = split_text_into_chunks(&transcript, 10_000);
         println!("Split transcript into {} chunks", chunks.len());
         
         // Summarize chunks and combine
