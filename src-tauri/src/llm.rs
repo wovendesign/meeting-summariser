@@ -167,19 +167,9 @@ Preserve speaker names. Use bullet points. Do not use \"Introduction\"/\"Key Poi
         Language::German => "
 Fassen Sie die folgenden Abschnittszusammenfassungen zu einer vollständigen und detaillierten Meeting-Zusammenfassung zusammen. Aufgaben wie Moderation, Protokollführung oder Zeiterfassung sollen zu Beginn des Protokolls stichpunktartig aufgeführt werden. Sie sind keine weiterführenden Aktionspunkte und dürfen daher nicht im Abschnitt zu den To-Dos oder nächsten Schritten erscheinen. 
 
-<<<<<<< HEAD
-Erstellen Sie eine gegliederte Zusammenfassung mit:
-- 📌 Gesamtkontext
-- 🧩 Zusammengeführte Hauptthemen (mit Bullet Points und Namen, wenn vorhanden)
-- ✅ Aktionspunkte, To-Dos, nächste Schritte nach Personen gruppiert (Format: • [Name]: Aufgabenbeschreibung)
-Vermeiden Sie Wiederholungen und konzentrieren Sie sich auf die wichtigsten Punkte. 
-Behalten Sie den Charakter des Meetings (z. B. informell, aktivistisch) bei und vermeiden Sie oberflächliche Generalisierungen.
-Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an.",
-=======
 Als `summary` geben Sie eine kurze Zusammenfassung des Meetings an, die den Zweck des Meetings und die wichtigsten Ergebnisse zusammenfasst.
 Es soll möglichst der gesamte Inhalt des Meetings zusammengefasst werden, ohne dass wichtige Details verloren gehen. 
 In erster Linie sollst du die Stichpunkte gruppieren, ohne sie zu verändern oder zu kürzen.
->>>>>>> 38c39b4fca8b061e41387cfd498d31e3b72715b4
 
 Die `topics` enthalten die wichtigsten Themen des Meetings, die in den einzelnen Abschnitten behandelt wurden. Diese sollten in einer strukturierten Form mit Stichpunkten und gegebenenfalls Unterpunkten dargestellt werden. Kombinieren Sie überlappende Themen und bewahren Sie Details. Vermeiden Sie Wiederholungen und konzentrieren Sie sich auf relevante Punkte. Meetinginterne Inhalte wie technische Probleme oder persönliche Anekdoten müssen nicht beachtet werden.
 Die `todos` enthalten die wichtigsten Aufgaben, die im Meeting besprochen wurden. Falls eine oder mehrere Personen für eine Aufgabe verantwortlich sind, listen Sie diese in der `assignees`-Liste auf. Die Aufgaben sollten klar und präzise formuliert sein. Aufgaben, die nur innerhalb des Meetings besprochen wurden, sollten nicht in den To-Dos auftauchen, sondern nur die Aufgaben, die für die Zukunft relevant sind.",
@@ -518,35 +508,14 @@ async fn generate_text_with_llm(
 
     // Try external API first if enabled
     app.emit("llm-progress", "Trying external API...").unwrap();
-<<<<<<< HEAD
-    let api_start = Instant::now();
-    
-    match try_external_api(system_prompt, user_prompt).await {
-=======
     match try_external_api(system_prompt, user_prompt, structure).await {
->>>>>>> 38c39b4fca8b061e41387cfd498d31e3b72715b4
         Ok(response) => {
-            let api_duration = api_start.elapsed();
-            let total_duration = start_time.elapsed();
-            println!("✅ External API successful! API time: {:.2}s, Total time: {:.2}s", 
-                api_duration.as_secs_f64(), total_duration.as_secs_f64());
             app.emit("llm-progress", "External API successful").unwrap();
             return Ok(response);
         }
         Err(e) => {
-<<<<<<< HEAD
-            let api_duration = api_start.elapsed();
-            println!("❌ External API failed after {:.2}s: {}, falling back to Kalosm", 
-                api_duration.as_secs_f64(), e);
-            app.emit("llm-progress", "External API failed, switching to local model...").unwrap();
-=======
             println!("External API failed: {}, falling back to Kalosm", e);
-            app.emit(
-                "llm-progress",
-                "External API failed, switching to local model...",
-            )
-            .unwrap();
->>>>>>> 38c39b4fca8b061e41387cfd498d31e3b72715b4
+            app.emit("llm-progress", "External API failed, switching to local model...").unwrap();
             return Err(e);
         }
     }
