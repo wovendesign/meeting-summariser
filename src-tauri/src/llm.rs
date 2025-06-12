@@ -61,7 +61,8 @@ Erstellen Sie eine gegliederte Zusammenfassung mit:
 - 🧩 Zusammengeführte Hauptthemen (mit Bullet Points und Namen, wenn vorhanden)
 - ✅ Aktionspunkte, To-Dos, nächste Schritte nach Personen gruppiert (Format: • [Name]: Aufgabenbeschreibung)
 Vermeiden Sie Wiederholungen und konzentrieren Sie sich auf die wichtigsten Punkte. 
-Behalten Sie den Charakter des Meetings (z. B. informell, aktivistisch) bei und vermeiden Sie oberflächliche Generalisierungen.",
+Behalten Sie den Charakter des Meetings (z. B. informell, aktivistisch) bei und vermeiden Sie oberflächliche Generalisierungen.
+Ergänze keine Kommentare oder Erklärungen, sondern gebe nur den finalen Output ohne Kommentare an.",
 
     }
 }
@@ -254,7 +255,11 @@ async fn generate_text_with_llm(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String, String> {
-    println!("Generating text with llm");
+    use std::time::Instant;
+    
+    let start_time = Instant::now();
+    println!("🚀 Starting LLM text generation...");
+    
     // let state = app.state::<Mutex<AppState>>();
     // let config = {
     //     let state = state.lock().await;
@@ -263,13 +268,21 @@ async fn generate_text_with_llm(
 
     // Try external API first if enabled
     app.emit("llm-progress", "Trying external API...").unwrap();
+    let api_start = Instant::now();
+    
     match try_external_api(system_prompt, user_prompt).await {
         Ok(response) => {
+            let api_duration = api_start.elapsed();
+            let total_duration = start_time.elapsed();
+            println!("✅ External API successful! API time: {:.2}s, Total time: {:.2}s", 
+                api_duration.as_secs_f64(), total_duration.as_secs_f64());
             app.emit("llm-progress", "External API successful").unwrap();
             return Ok(response);
         }
         Err(e) => {
-            println!("External API failed: {}, falling back to Kalosm", e);
+            let api_duration = api_start.elapsed();
+            println!("❌ External API failed after {:.2}s: {}, falling back to Kalosm", 
+                api_duration.as_secs_f64(), e);
             app.emit("llm-progress", "External API failed, switching to local model...").unwrap();
             return Err(e);
         }
