@@ -54,6 +54,13 @@
     isActive: false,
   });
 
+  // Summarization progress tracking
+  let summarizationProgress = $state({
+    currentChunk: 0,
+    totalChunks: 0,
+    isActive: false,
+  });
+
   import { readFile, BaseDirectory } from "@tauri-apps/plugin-fs";
 
   let meetingMetadata: {
@@ -98,11 +105,17 @@
       });
       await getMeetingMetadata();
       isSummarizing = null; // Reset summarization status after fetching summary
+      summarizationProgress.isActive = false;
+      summarizationProgress.currentChunk = 0;
+      summarizationProgress.totalChunks = 0;
     } catch (error) {
       console.error("Error regenerating summary:", error);
       // Handle error appropriately, e.g., show a toast notification
       toast.error("Error regenerating summary: " + error);
       saveStatus = "Error regenerating summary";
+      summarizationProgress.isActive = false;
+      summarizationProgress.currentChunk = 0;
+      summarizationProgress.totalChunks = 0;
     }
   }
 
@@ -165,12 +178,38 @@
       },
     );
 
+    // Listen for summarization progress events
+    const summarizationChunkStartListener = await listen<number>(
+      "summarization-chunk-start",
+      (event) => {
+        console.log("Summarization started with", event.payload, "chunks");
+        summarizationProgress.totalChunks = event.payload;
+        summarizationProgress.currentChunk = 0;
+        summarizationProgress.isActive = true;
+      },
+    );
+
+    const summarizationChunkProgressListener = await listen<number>(
+      "summarization-chunk-progress",
+      (event) => {
+        console.log(
+          "Summarization progress:",
+          event.payload + 1,
+          "of",
+          summarizationProgress.totalChunks,
+        );
+        summarizationProgress.currentChunk = event.payload + 1; // +1 because backend sends 0-based index
+      },
+    );
+
     // Store the listeners for cleanup
     whisperxListeners = [
       whisperxStartListener,
       whisperxProgressListener,
       ffmpegStartListener,
       ffmpegProgressListener,
+      summarizationChunkStartListener,
+      summarizationChunkProgressListener,
     ];
 
     isTranscribing = await invoke("is_transcribing", {
@@ -197,6 +236,7 @@
       (event) => {
         console.log(event);
         isSummarizing = event.payload;
+        summarizationProgress.isActive = true;
         console.log("Summarization started for meeting ID:", event.payload);
         toast.info("Summarization started: " + event.payload);
       },
@@ -572,23 +612,51 @@
       </Card.Header>
       <Card.Content class="prose prose-invert mx-auto">
         {#if isSummarizing === meetingId}
-          <div class={"flex-wrap gap-2 animate-pulse flex"}>
-            <div class="h-4 w-12 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-32 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-28 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-12 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-16 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-20 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-32 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-28 bg-foreground/10 rounded"></div>
-            <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+          <div class="space-y-4">
+            {#if summarizationProgress.isActive && summarizationProgress.totalChunks > 0}
+              <!-- Progress bar and text -->
+              <div class="space-y-2">
+                <div class="flex justify-between text-sm">
+                  <span
+                    >Summarizing Chunk {summarizationProgress.currentChunk} of {summarizationProgress.totalChunks}</span
+                  >
+                  <span
+                    >{Math.round(
+                      ((summarizationProgress.currentChunk - 1) /
+                        summarizationProgress.totalChunks) *
+                        100,
+                    )}%</span
+                  >
+                </div>
+                <div class="w-full bg-muted rounded-full h-2">
+                  <div
+                    class="bg-primary h-2 rounded-full transition-all duration-300 ease-in-out"
+                    style="width: {((summarizationProgress.currentChunk - 1) /
+                      summarizationProgress.totalChunks) *
+                      100}%"
+                  ></div>
+                </div>
+              </div>
+            {/if}
+            <!-- Animated placeholder -->
+            <div class={"flex-wrap gap-2 animate-pulse flex"}>
+              <div class="h-4 w-12 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-32 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-28 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-12 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-16 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-20 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-32 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-28 bg-foreground/10 rounded"></div>
+              <div class="h-4 w-24 bg-foreground/10 rounded"></div>
+            </div>
           </div>
         {:else if isSummarizing && isSummarizing !== meetingId && !summaryContent}
           <p class="text-sm text-muted-foreground">

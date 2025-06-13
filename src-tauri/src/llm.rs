@@ -77,6 +77,7 @@ impl MeetingToMarkdown for FinalSummaryFormat {
     fn to_markdown(&self) -> String {
         let mut markdown = format!("# {}\n\n", self.title.text);
         markdown.push_str(self.summary.as_str());
+        markdown.push_str("\n\n");
         markdown.push_str("## Key Facts\n");
         if let Some(moderation) = &self.key_facts.responisible_for_moderation {
             markdown.push_str(&format!("- **Moderation:** {}\n", moderation));
@@ -367,7 +368,10 @@ async fn summarize_chunks(
     language: &Language,
     meeting_id: &str,
 ) -> Result<FinalSummaryFormat, String> {
+    use std::time::Instant;
+
     let mut chunk_summaries = Vec::new();
+    let mut chunk_times = Vec::new();
 
     // Get the app directory for saving chunk summaries
     let app_dir = app
@@ -392,8 +396,16 @@ async fn summarize_chunks(
     // Total steps: chunk processing + final summary generation
     let total_steps = chunks.len() + 1;
 
+    // Emit summarization start event
+    app.emit("summarization-chunk-start", total_steps).unwrap();
+
     for (i, chunk) in chunks.iter().enumerate() {
+        let chunk_start_time = Instant::now();
         let current_step = i + 1;
+
+        // Emit progress for current chunk
+        app.emit("summarization-chunk-progress", i).unwrap();
+
         app.emit(
             "llm-progress",
             &format!(
@@ -416,6 +428,17 @@ async fn summarize_chunks(
             Some(schema_for!(FirstSummaryFormat)),
         )
         .await?;
+
+        let chunk_summary: FirstSummaryFormat = serde_json::from_str(&chunk_summary_json)
+            .map_err(|e| format!("Failed to parse chunk summary JSON: {}", e))?;
+
+        let chunk_duration = chunk_start_time.elapsed();
+        chunk_times.push(chunk_duration);
+        println!(
+            "✅ Chunk {} completed in {:.2}s",
+            i + 1,
+            chunk_duration.as_secs_f64()
+        );
 
         let chunk_summary: FirstSummaryFormat = serde_json::from_str(&chunk_summary_json)
             .map_err(|e| format!("Failed to parse chunk summary JSON: {}", e))?;
@@ -468,6 +491,37 @@ async fn summarize_chunks(
         chunk_summaries.push(chunk_summary);
     }
 
+    // Calculate and log chunk timing statistics
+    if !chunk_times.is_empty() {
+        let total_chunk_time: std::time::Duration = chunk_times.iter().sum();
+        let average_chunk_time = total_chunk_time / chunk_times.len() as u32;
+        let min_chunk_time = chunk_times.iter().min().unwrap();
+        let max_chunk_time = chunk_times.iter().max().unwrap();
+
+        println!("📊 Chunk timing statistics:");
+        println!(
+            "   Total chunk processing time: {:.2}s",
+            total_chunk_time.as_secs_f64()
+        );
+        println!(
+            "   Average chunk time: {:.2}s",
+            average_chunk_time.as_secs_f64()
+        );
+        println!("   Fastest chunk: {:.2}s", min_chunk_time.as_secs_f64());
+        println!("   Slowest chunk: {:.2}s", max_chunk_time.as_secs_f64());
+
+        app.emit(
+            "llm-progress",
+            &format!(
+                "📊 Chunk stats: Avg {:.1}s/chunk, Total {:.1}s for {} chunks",
+                average_chunk_time.as_secs_f64(),
+                total_chunk_time.as_secs_f64(),
+                chunks.len()
+            ),
+        )
+        .unwrap();
+    }
+
     // Save all chunk summaries as one file
     let all_chunks_summary_file = chunks_dir.join("all_chunk_summaries.md");
     let all_summaries_content = chunk_summaries
@@ -486,6 +540,12 @@ async fn summarize_chunks(
     }
 
     let final_step = total_steps;
+    let final_summary_start_time = Instant::now();
+
+    // Emit final step progress
+    app.emit("summarization-chunk-progress", chunks.len())
+        .unwrap();
+
     app.emit(
         "llm-progress",
         &format!(
@@ -498,7 +558,7 @@ async fn summarize_chunks(
     let final_system_prompt = get_final_summary_prompt(language);
 
     let final_string = generate_text_with_llm(
-        app,
+        app.clone(),
         final_system_prompt,
         json!(combine_structured_first_summaries(chunk_summaries))
             .to_string()
@@ -510,6 +570,12 @@ async fn summarize_chunks(
 
     let final_summary: FinalSummaryFormat = serde_json::from_str(&final_string)
         .map_err(|e| format!("Failed to parse final summary JSON: {}", e))?;
+
+    let final_summary_duration = final_summary_start_time.elapsed();
+    println!(
+        "✅ Final summary generation completed in {:.2}s",
+        final_summary_duration.as_secs_f64()
+    );
 
     return Ok(final_summary);
 }
@@ -625,6 +691,11 @@ async fn try_external_api(
 
 #[tauri::command]
 pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
+    use std::time::Instant;
+
+    let summary_start_time = Instant::now();
+    println!("🚀 Starting full meeting summary generation...");
+
     // Check if another transcription is already running
     let state = app.state::<Mutex<AppState>>();
     // Lock the mutex to get mutable access:
@@ -670,7 +741,12 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
         // generate_text_with_llm(app.clone(), system_prompt, &transcript, None).await?
     };
 
-    state.currently_summarizing = None;
+    // Reset state before final operations
+    // {
+    //     let state = app.state::<Mutex<AppState>>();
+    //     let mut state = state.lock().await;
+    //     state.currently_summarizing = None;
+    // }
 
     // Add it to meeting.json if it exists
     let app_dir = app
@@ -692,6 +768,22 @@ pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String
         .map_err(|e| e.to_string())?;
 
     save_meeting_name(&app, meeting_id, content.title.to_string())?;
+
+    let total_duration = summary_start_time.elapsed();
+    println!("🎉 Full meeting summary completed!");
+    println!(
+        "⏱️  Total summary generation time: {:.2}s",
+        total_duration.as_secs_f64()
+    );
+
+    app.emit(
+        "llm-progress",
+        &format!(
+            "✅ Summary completed in {:.1}s",
+            total_duration.as_secs_f64()
+        ),
+    )
+    .unwrap();
 
     Ok(content.to_markdown())
 }
