@@ -218,6 +218,41 @@ async fn get_meeting_audio(app: AppHandle, meeting_id: &str) -> Result<Response,
     };
 }
 
+#[tauri::command]
+async fn rename_meeting(app: AppHandle, meeting_id: &str, new_name: &str) -> Result<(), String> {
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let meeting_dir = app_dir.join("uploads").join(meeting_id);
+    let metadata_path = meeting_dir.join("meeting.json");
+
+    // Get existing metadata or create new one
+    let mut metadata = if metadata_path.exists() {
+        let content = fs::read_to_string(&metadata_path)
+            .await
+            .map_err(|e| e.to_string())?;
+        serde_json::from_str::<MeetingMetadata>(&content).map_err(|e| e.to_string())?
+    } else {
+        MeetingMetadata {
+            id: meeting_id.to_string(),
+            name: None,
+            created_at: Some(Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()),
+        }
+    };
+
+    // Update the name
+    metadata.name = Some(new_name.to_string());
+
+    // Write back to file
+    let json_content = serde_json::to_string_pretty(&metadata).map_err(|e| e.to_string())?;
+    fs::write(&metadata_path, json_content)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 // Helper function to get fallback date from file creation time or meeting_id
 async fn get_fallback_date(metadata_path: &Path, meeting_id: &str) -> Option<String> {
     // Try to get file creation time from the parent directory (meeting directory)
@@ -275,7 +310,8 @@ pub fn run() {
             audio::split_audio_into_chunks_command,
             audio::convert_user_audio,
             get_llm_config,
-            set_llm_config
+            set_llm_config,
+            rename_meeting
         ])
         .setup(|app| {
             app.manage(Mutex::new(AppState::default()));

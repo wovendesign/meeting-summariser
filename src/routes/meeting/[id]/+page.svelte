@@ -104,6 +104,22 @@
     alert("This feature is not implemented yet.");
   }
 
+  async function handleRenameMeeting(newName: string) {
+    try {
+      generatingName = true;
+      await invoke("rename_meeting", { meetingId, newName });
+      name = newName;
+      // Reload metadata to reflect the change
+      await meetingData.getMeetingMetadata();
+      toast.success("Meeting renamed successfully!");
+    } catch (error) {
+      console.error("Error renaming meeting:", error);
+      toast.error("Failed to rename meeting");
+    } finally {
+      generatingName = false;
+    }
+  }
+
   async function handleCopySummary() {
     if (summaryContent) {
       await navigator.clipboard.writeText(summaryContent);
@@ -152,6 +168,7 @@
     {name}
     {generatingName}
     onRevealInFinder={handleRevealInFinder}
+    onRenameMeeting={handleRenameMeeting}
   />
 
   <AudioPlayer {audioURL} onTranscribe={meetingData.transcribe} />
