@@ -19,6 +19,7 @@
     "@tauri-apps/plugin-http": "~2.4.4",
     "@tauri-apps/plugin-opener": "~2.2.7",
     "marked": "^15.0.12",
+    "mode-watcher": "^1.0.8",
     "openai": "^4.103.0",
     "svelte-sonner": "^1.0.3",
     "svelte-tauri-filedrop": "^2.0.2",

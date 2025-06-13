@@ -18,6 +18,7 @@
     "npm:bits-ui@^2.2.0": "2.2.0_@internationalized+date@3.8.1_svelte@5.33.3__acorn@8.14.1",
     "npm:clsx@^2.1.1": "2.1.1",
     "npm:marked@^15.0.12": "15.0.12",
+    "npm:mode-watcher@^1.0.8": "1.0.8_svelte@5.33.3__acorn@8.14.1",
     "npm:openai@^4.103.0": "4.103.0",
     "npm:prettier-plugin-svelte@^3.3.3": "3.4.0_prettier@3.5.3_svelte@5.33.3__acorn@8.14.1",
     "npm:prettier-plugin-tailwindcss@~0.6.11": "0.6.11_prettier@3.5.3_prettier-plugin-svelte@3.4.0__prettier@3.5.3__svelte@5.33.3___acorn@8.14.1_svelte@5.33.3__acorn@8.14.1",
@@ -557,7 +558,7 @@
         "esm-env",
         "runed@0.28.0_svelte@5.33.3__acorn@8.14.1",
         "svelte",
-        "svelte-toolbelt",
+        "svelte-toolbelt@0.9.1_svelte@5.33.3__acorn@8.14.1",
         "tabbable"
       ]
     },
@@ -877,6 +878,14 @@
     "mkdirp@3.0.1": {
       "integrity": "sha512-+NsyUUAZDmo6YVHzL/stxSu3t9YS1iljliy3BSDrXJ/dkn1KYdmtZODGGjLcc9XLgVVpH4KshHB8XmZgMhaBXg=="
     },
+    "mode-watcher@1.0.8_svelte@5.33.3__acorn@8.14.1": {
+      "integrity": "sha512-1YIgYymrae0lhcG9zPS/YWOvcKsUbM4bLGIh+eXTUIput5+dEJifcmUgp8NSehSXGSwITH6jbSjNhGEIhE3k5Q==",
+      "dependencies": [
+        "runed@0.25.0_svelte@5.33.3__acorn@8.14.1",
+        "svelte",
+        "svelte-toolbelt@0.7.1_svelte@5.33.3__acorn@8.14.1"
+      ]
+    },
     "mri@1.2.0": {
       "integrity": "sha512-tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA=="
     },
@@ -978,6 +987,20 @@
         "fsevents"
       ]
     },
+    "runed@0.23.4_svelte@5.33.3__acorn@8.14.1": {
+      "integrity": "sha512-9q8oUiBYeXIDLWNK5DfCWlkL0EW3oGbk845VdKlPeia28l751VpfesaB/+7pI6rnbx1I6rqoZ2fZxptOJLxILA==",
+      "dependencies": [
+        "esm-env",
+        "svelte"
+      ]
+    },
+    "runed@0.25.0_svelte@5.33.3__acorn@8.14.1": {
+      "integrity": "sha512-7+ma4AG9FT2sWQEA0Egf6mb7PBT2vHyuHail1ie8ropfSjvZGtEAx8YTmUjv/APCsdRRxEVvArNjALk9zFSOrg==",
+      "dependencies": [
+        "esm-env",
+        "svelte"
+      ]
+    },
     "runed@0.26.0_svelte@5.33.3__acorn@8.14.1": {
       "integrity": "sha512-qWFv0cvLVRd8pdl/AslqzvtQyEn5KaIugEernwg9G98uJVSZcs/ygvPBvF80LA46V8pwRvSKnaVLDI3+i2wubw==",
       "dependencies": [
@@ -1040,6 +1063,15 @@
     "svelte-tauri-filedrop@2.0.2_svelte@5.33.3__acorn@8.14.1": {
       "integrity": "sha512-1NT63VUPHPRtyxpLhyuWl8XHm7eB6+5uCm7WrD4qslHftPQIL6Q0urIqk0DpsSo6bsRuwTPIf2DynbTqSsZMOg==",
       "dependencies": [
+        "svelte"
+      ]
+    },
+    "svelte-toolbelt@0.7.1_svelte@5.33.3__acorn@8.14.1": {
+      "integrity": "sha512-HcBOcR17Vx9bjaOceUvxkY3nGmbBmCBBbuWLLEWO6jtmWH8f/QoWmbyUfQZrpDINH39en1b8mptfPQT9VKQ1xQ==",
+      "dependencies": [
+        "clsx",
+        "runed@0.23.4_svelte@5.33.3__acorn@8.14.1",
+        "style-to-object",
         "svelte"
       ]
     },
@@ -1192,6 +1224,7 @@
         "npm:bits-ui@^2.2.0",
         "npm:clsx@^2.1.1",
         "npm:marked@^15.0.12",
+        "npm:mode-watcher@^1.0.8",
         "npm:openai@^4.103.0",
         "npm:prettier-plugin-svelte@^3.3.3",
         "npm:prettier-plugin-tailwindcss@~0.6.11",
