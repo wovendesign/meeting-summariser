@@ -1,4 +1,5 @@
 use crate::{get_meeting_transcript, AppState, MeetingMetadata};
+use chrono::Utc;
 use schemars::{schema_for, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -829,9 +830,29 @@ fn save_meeting_name(app: &AppHandle, meeting_id: &str, name: String) -> Result<
         .join(meeting_id)
         .join("meeting.json");
 
+    // Try to read existing metadata to preserve created_at
+    let created_at = if let Ok(content) = std::fs::read_to_string(&metadata_path) {
+        if let Ok(existing_metadata) = serde_json::from_str::<MeetingMetadata>(&content) {
+            existing_metadata.created_at
+        } else {
+            Some(
+                chrono::Utc::now()
+                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string(),
+            )
+        }
+    } else {
+        Some(
+            chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string(),
+        )
+    };
+
     let metadata = MeetingMetadata {
         id: meeting_id.to_string(),
         name: Some(name),
+        created_at,
     };
     let json = serde_json::to_string(&metadata).map_err(|e| e.to_string())?;
     std::fs::write(metadata_path, json).map_err(|e| e.to_string())?;

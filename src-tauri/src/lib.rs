@@ -1,4 +1,7 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
@@ -39,6 +42,7 @@ impl Default for LlmConfig {
 struct MeetingMetadata {
     id: String,
     name: Option<String>,
+    created_at: Option<String>, // ISO 8601 date string
 }
 #[tauri::command]
 async fn get_meetings(app: AppHandle) -> Result<Vec<MeetingMetadata>, String> {
@@ -167,19 +171,30 @@ async fn get_meeting_metadata(app: AppHandle, meeting_id: &str) -> Result<Meetin
         .join("meeting.json");
 
     // read and parse JSON
-    let content = fs::read_to_string(metadata_path)
+    let content = fs::read_to_string(&metadata_path)
         .await
         .map_err(|e| e.to_string());
 
     if let Ok(content) = content {
-        serde_json::from_str::<MeetingMetadata>(&content).map_err(|e| e.to_string())
+        let mut metadata: MeetingMetadata =
+            serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+        // If created_at is missing, try to get it from file creation time or meeting_id
+        if metadata.created_at.is_none() {
+            metadata.created_at = get_fallback_date(&metadata_path, meeting_id).await;
+        }
+
+        Ok(metadata)
     } else {
+        // Create new metadata with current date
+        let created_at = Some(Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+
         Ok(MeetingMetadata {
             id: meeting_id.to_string(),
             name: None,
+            created_at,
         })
     }
-    // serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -201,6 +216,32 @@ async fn get_meeting_audio(app: AppHandle, meeting_id: &str) -> Result<Response,
         }
         Err(e) => Err(e.to_string()),
     };
+}
+
+// Helper function to get fallback date from file creation time or meeting_id
+async fn get_fallback_date(metadata_path: &Path, meeting_id: &str) -> Option<String> {
+    // Try to get file creation time from the parent directory (meeting directory)
+    if let Ok(metadata) = fs::metadata(metadata_path.parent()?).await {
+        if let Ok(created) = metadata.created() {
+            if let Ok(duration) = created.duration_since(UNIX_EPOCH) {
+                if let Some(dt) = DateTime::from_timestamp(duration.as_secs() as i64, 0) {
+                    return Some(dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+                }
+            }
+        }
+    }
+
+    // Fallback: try to parse timestamp from meeting_id (format: recording-{timestamp})
+    if meeting_id.starts_with("recording-") {
+        if let Ok(timestamp) = meeting_id.trim_start_matches("recording-").parse::<i64>() {
+            if let Some(dt) = DateTime::from_timestamp(timestamp, 0) {
+                return Some(dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string());
+            }
+        }
+    }
+
+    // Final fallback: current time
+    Some(Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

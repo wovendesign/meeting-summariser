@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::process::Command;
+use chrono::Utc;
+use crate::MeetingMetadata;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AudioInfo {
@@ -280,5 +282,15 @@ pub async fn convert_user_audio(app: AppHandle, audio_path: &str) -> Result<Stri
         .await
         .map_err(|e| format!("Failed to execute ffmpeg: {}", e))?;
 
-    Ok(audio_path.to_string_lossy().to_string())
+    // Create meeting metadata file
+    let metadata = MeetingMetadata {
+        id: meeting_id.clone(),
+        name: None,
+        created_at: Some(Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()),
+    };
+    let metadata_path = meeting_dir.join("meeting.json");
+    let json = serde_json::to_string(&metadata).map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+    tokio::fs::write(metadata_path, json).await.map_err(|e| format!("Failed to write metadata: {}", e))?;
+
+    Ok(meeting_id)
 }

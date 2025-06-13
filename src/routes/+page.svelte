@@ -15,11 +15,11 @@
   import { FlexRender } from "$lib/components/ui/data-table/index.js";
 
   import FileDrop from "svelte-tauri-filedrop";
-    import { toast, Toaster } from "svelte-sonner";
+  import { toast, Toaster } from "svelte-sonner";
 
   async function open(path: string) {
     console.log("Files dropped:", path);
-    
+
     try {
       await invoke("convert_user_audio", { audioPath: path });
       toast.success("File processed successfully!");
@@ -34,7 +34,7 @@
   let meetings: {
     id: string;
     name: string | null;
-    // Add other fields as necessary
+    created_at: string | null;
   }[] = $state([]);
 
   onMount(async () => {
@@ -43,8 +43,14 @@
 
   async function getMeetings() {
     try {
-      meetings = await invoke("get_meetings");
-      console.log("Meetings fetched:", meetings);
+      const rawMeetings = await invoke("get_meetings");
+      // Sort meetings by date (newest first)
+      meetings = rawMeetings.sort((a, b) => {
+        const dateA = new Date(a.created_at || "1970-01-01");
+        const dateB = new Date(b.created_at || "1970-01-01");
+        return dateB.getTime() - dateA.getTime();
+      });
+      console.log("Meetings fetched and sorted:", meetings);
     } catch (error) {
       console.error("Error fetching meetings:", error);
     }
@@ -54,7 +60,22 @@
     {
       accessorKey: "name",
       header: "Meeting Name",
-      cell: (info) => info.getValue(),
+      cell: (info) => info.getValue() || `Meeting ${info.row.original.id}`,
+    },
+    {
+      accessorKey: "created_at",
+      header: "Date",
+      cell: (info) => {
+        const date = info.getValue();
+        if (!date) return "Unknown";
+        return new Date(date).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      },
     },
     {
       accessorKey: "id",
@@ -155,12 +176,11 @@
       </div>
     </Card.Content>
   </Card.Root>
-  <FileDrop  extensions={[
-    "mp3",
-    "wav",
-    "ogg",
-    "m4a"
-    ]} handleOneFile={open} let:files>
+  <FileDrop
+    extensions={["mp3", "wav", "ogg", "m4a"]}
+    handleOneFile={open}
+    let:files
+  >
     <div class="dropzone" class:droppable={files.length > 0}>
       <h2>Drop Audio files</h2>
     </div>
