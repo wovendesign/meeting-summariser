@@ -43,13 +43,23 @@
 
   async function getMeetings() {
     try {
-      const rawMeetings = await invoke("get_meetings");
+      const rawMeetings = (await invoke("get_meetings")) as Array<{
+        id: string;
+        name?: string;
+        created_at?: string;
+      }>;
       // Sort meetings by date (newest first)
-      meetings = rawMeetings.sort((a, b) => {
-        const dateA = new Date(a.created_at || "1970-01-01");
-        const dateB = new Date(b.created_at || "1970-01-01");
-        return dateB.getTime() - dateA.getTime();
-      });
+      meetings = rawMeetings
+        .map((meeting) => ({
+          id: meeting.id,
+          name: meeting.name ?? null,
+          created_at: meeting.created_at ?? null,
+        }))
+        .sort((a, b) => {
+          const dateA = new Date(a.created_at || "1970-01-01");
+          const dateB = new Date(b.created_at || "1970-01-01");
+          return dateB.getTime() - dateA.getTime();
+        });
       console.log("Meetings fetched and sorted:", meetings);
     } catch (error) {
       console.error("Error fetching meetings:", error);
