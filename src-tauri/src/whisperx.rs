@@ -640,11 +640,11 @@ async fn transcribe_single_chunk(
         .app_local_data_dir()
         .expect("Failed to get app local data directory");
     let resource_path = app_dir.join("python");
-    let lib_path = resource_path
+    let _lib_path = resource_path
         .join("lib")
         .join("python3.12")
         .join("site-packages");
-    let python_exe = get_python_executable_path(&resource_path);
+    let _python_exe = get_python_executable_path(&resource_path);
     // let output = Command::new(&python_exe)
     //     .env("PYTHONPATH", &lib_path)
     //     .arg("-m")

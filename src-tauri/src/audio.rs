@@ -1,4 +1,4 @@
-use openai_api_rs::v1::audio;
+// Note: audio transcription imports are removed as they're handled by whisperx module
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager};
@@ -271,7 +271,7 @@ pub async fn convert_user_audio(app: AppHandle, audio_path: &str) -> Result<Stri
     // Convert the audio file to OGG format
     let output_file_name = format!("{}.ogg", meeting_id);
     let output_path = meeting_dir.join(&output_file_name);
-    let output = Command::new("ffmpeg")
+    let _output = Command::new("ffmpeg")
         .arg("-i")
         .arg(audio_path)
         .arg("-c:a")

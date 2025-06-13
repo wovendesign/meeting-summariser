@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
@@ -12,28 +12,13 @@ mod llm;
 mod meeting;
 mod whisperx;
 
+use llm::LlmConfig;
+
 #[derive(Default)]
 struct AppState {
     currently_transcribing: Option<String>,
     currently_summarizing: Option<String>,
     llm_config: LlmConfig,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct LlmConfig {
-    use_external_api: bool,
-    external_endpoint: String,
-    external_model: String,
-}
-
-impl Default for LlmConfig {
-    fn default() -> Self {
-        Self {
-            use_external_api: true, // Try external first
-            external_endpoint: "http://localhost:11434/v1".to_string(),
-            external_model: "llama3".to_string(),
-        }
-    }
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -154,6 +139,9 @@ async fn set_llm_config(
         use_external_api,
         external_endpoint,
         external_model,
+        chunk_size: 10_000,
+        max_retries: 3,
+        timeout_seconds: 120,
     };
     Ok(())
 }
