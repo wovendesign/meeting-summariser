@@ -24,12 +24,13 @@ pub use service::LlmService;
 pub use summary::SummaryGenerator;
 
 // Re-export the public API tauri commands
-pub use summary::{generate_summary, get_meeting_summary, is_summarizing, test_llm_connection};
+pub use summary::{generate_summary, get_meeting_summary, is_summarizing, test_llm_connection, regenerate_final_summary};
 
 // Make sure the tauri command macros are available
 pub use summary::{
     __cmd__generate_summary, 
     __cmd__get_meeting_summary, 
     __cmd__is_summarizing, 
-    __cmd__test_llm_connection
+    __cmd__test_llm_connection,
+    __cmd__regenerate_final_summary
 };

@@ -19,6 +19,7 @@
     summarizationProgress: ProgressState;
     loadingSummary: boolean;
     onRegenerateSummary?: () => void;
+    onRegenerateFinalSummary?: () => void;
     onCopySummary?: () => void;
   }
 
@@ -30,6 +31,7 @@
     summarizationProgress,
     loadingSummary,
     onRegenerateSummary,
+    onRegenerateFinalSummary,
     onCopySummary,
   }: Props = $props();
 
@@ -84,8 +86,11 @@
       <Clipboard class="mr-2 size-4" />
       Copy Summary
     </Button>
+    <Button onclick={onRegenerateFinalSummary} disabled={loadingSummary} variant="outline">
+      {loadingSummary ? "Regenerating..." : "Regenerate Final Summary"}
+    </Button>
     <Button onclick={onRegenerateSummary} disabled={loadingSummary}>
-      {loadingSummary ? "Regenerating..." : "Regenerate Summary"}
+      {loadingSummary ? "Regenerating..." : "Regenerate Full Summary"}
     </Button>
   </Card.Footer>
 </Card.Root>

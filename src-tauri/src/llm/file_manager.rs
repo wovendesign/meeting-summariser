@@ -99,6 +99,44 @@ impl FileManager {
             .map_err(|e| format!("Failed to parse summary JSON: {}", e))
     }
 
+    /// Read all saved chunk summaries from disk
+    pub async fn read_chunk_summaries(&self, meeting_id: &str) -> Result<Vec<crate::llm::models::FirstSummaryFormat>, String> {
+        let chunks_dir = self.get_chunks_dir(meeting_id)?;
+        
+        // Check if chunks directory exists
+        if !chunks_dir.exists() {
+            return Err("No chunk summaries found - chunks directory doesn't exist".to_string());
+        }
+
+        let mut chunk_summaries = Vec::new();
+        let mut chunk_index = 1;
+
+        // Read chunk summaries in order
+        loop {
+            let summary_file = chunks_dir.join(format!("chunk_{:03}_summary.json", chunk_index));
+            
+            if !summary_file.exists() {
+                break;
+            }
+
+            let summary_json = fs::read_to_string(&summary_file)
+                .await
+                .map_err(|e| format!("Failed to read chunk summary {}: {}", chunk_index, e))?;
+
+            let chunk_summary: crate::llm::models::FirstSummaryFormat = serde_json::from_str(&summary_json)
+                .map_err(|e| format!("Failed to parse chunk summary {} JSON: {}", chunk_index, e))?;
+
+            chunk_summaries.push(chunk_summary);
+            chunk_index += 1;
+        }
+
+        if chunk_summaries.is_empty() {
+            return Err("No chunk summaries found".to_string());
+        }
+
+        Ok(chunk_summaries)
+    }
+
     pub fn save_meeting_metadata(&self, meeting_id: &str, name: String) -> Result<(), String> {
         let meeting_dir = self.get_meeting_dir(meeting_id)?;
         let metadata_path = meeting_dir.join("meeting.json");

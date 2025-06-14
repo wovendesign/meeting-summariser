@@ -80,6 +80,65 @@ impl SummaryGenerator {
         Ok(content.to_markdown())
     }
 
+    /// Regenerate only the final summary using existing chunk summaries
+    pub async fn regenerate_final_summary(&self, meeting_id: &str) -> LlmResult<String> {
+        let summary_start_time = Instant::now();
+        println!("🔄 Starting final summary regeneration from existing chunks...");
+
+        // Check if another summarization is running
+        self.check_and_set_summarization_state(meeting_id).await?;
+
+        // Read existing chunk summaries from disk
+        let chunk_summaries = self.file_manager.read_chunk_summaries(meeting_id).await
+            .map_err(|e| LlmError::FileError(format!("Failed to read chunk summaries: {}", e)))?;
+
+        println!("📦 Found {} saved chunk summaries", chunk_summaries.len());
+
+        // Get LLM config
+        let config = self.get_llm_config().await?;
+        let llm_service = LlmService::new(config.external_endpoint, config.external_model);
+
+        // Generate final summary from existing chunk summaries
+        let mut progress_tracker = ProgressTracker::new(self.app_handle.clone(), 1);
+        progress_tracker.start_summarization(meeting_id)
+            .map_err(|e| LlmError::NetworkError(e))?;
+
+        let content = self.generate_final_summary(chunk_summaries, &llm_service, &mut progress_tracker).await?;
+
+        // Save the regenerated summary
+        self.file_manager.save_final_summary(meeting_id, &content).await
+            .map_err(|e| LlmError::FileError(e))?;
+
+        self.file_manager.save_meeting_metadata(meeting_id, content.title.to_string())
+            .map_err(|e| LlmError::FileError(e))?;
+
+        // Reset summarization state
+        {
+            let state = self.app_handle.state::<Mutex<AppState>>();
+            let mut state = state.lock().await;
+            state.currently_summarizing = None;
+        }
+
+        let total_duration = summary_start_time.elapsed();
+        println!("🎉 Final summary regeneration completed!");
+        println!(
+            "⏱️  Total regeneration time: {:.2}s",
+            total_duration.as_secs_f64()
+        );
+
+        self.app_handle
+            .emit(
+                "llm-progress",
+                &format!(
+                    "✅ Final summary regenerated in {:.1}s",
+                    total_duration.as_secs_f64()
+                ),
+            )
+            .map_err(|e| LlmError::NetworkError(format!("Failed to emit progress: {}", e)))?;
+
+        Ok(content.to_markdown())
+    }
+
     async fn check_and_set_summarization_state(&self, meeting_id: &str) -> LlmResult<()> {
         let state = self.app_handle.state::<Mutex<AppState>>();
         let mut state = state.lock().await;
@@ -366,6 +425,12 @@ pub async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<Str
     let file_manager = FileManager::new(app);
     let summary = file_manager.read_summary(meeting_id).await.map_err(|e| e.to_string())?;
     Ok(summary.to_markdown())
+}
+
+#[tauri::command]
+pub async fn regenerate_final_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
+    let generator = SummaryGenerator::new(app, Language::default());
+    generator.regenerate_final_summary(meeting_id).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

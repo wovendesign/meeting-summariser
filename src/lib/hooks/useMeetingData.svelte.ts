@@ -84,6 +84,18 @@ export function useMeetingData(meetingId: string) {
     }
   }
 
+  async function regenerateFinalSummary() {
+    try {
+      summaryContent = await invoke("regenerate_final_summary", { meetingId });
+      await getMeetingMetadata();
+      return summaryContent;
+    } catch (error) {
+      console.error("Error regenerating final summary:", error);
+      toast.error("Error regenerating final summary: " + error);
+      throw error;
+    }
+  }
+
   async function transcribe() {
     try {
       await invoke("transcribe_with_chunking", { meetingId });
@@ -114,6 +126,7 @@ export function useMeetingData(meetingId: string) {
     getAudio,
     getMeetingMetadata,
     regenerateSummary,
+    regenerateFinalSummary,
     transcribe,
   };
 }

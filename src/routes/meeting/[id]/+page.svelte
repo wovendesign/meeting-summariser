@@ -100,6 +100,19 @@
     }
   }
 
+  async function handleRegenerateFinalSummary() {
+    try {
+      await meetingData.regenerateFinalSummary();
+      await meetingData.getMeetingMetadata();
+      isSummarizing = null;
+      progressTracking.resetSummarizationProgress();
+    } catch (error) {
+      console.error("Error regenerating final summary:", error);
+      saveStatus = "Error regenerating final summary";
+      progressTracking.resetSummarizationProgress();
+    }
+  }
+
   async function handleRevealInFinder() {
     alert("This feature is not implemented yet.");
   }
@@ -207,6 +220,7 @@
       summarizationProgress={progressTracking.summarizationProgress}
       {loadingSummary}
       onRegenerateSummary={handleRegenerateSummary}
+      onRegenerateFinalSummary={handleRegenerateFinalSummary}
       onCopySummary={handleCopySummary}
     />
   </section>

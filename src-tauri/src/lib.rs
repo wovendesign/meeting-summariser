@@ -282,6 +282,7 @@ pub fn run() {
             get_meeting_metadata,
             llm::get_meeting_summary,
             llm::generate_summary,
+            llm::regenerate_final_summary,
             llm::is_summarizing,
             llm::test_llm_connection,
             whisperx::check_python_installation,
