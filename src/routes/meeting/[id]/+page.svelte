@@ -37,6 +37,7 @@
   // Derived values
   const meetingMetadata = $derived(meetingData.meetingMetadata);
   const summaryContent = $derived(meetingData.summaryContent);
+  const chunkSummaries = $derived(meetingData.chunkSummaries);
   const audioURL = $derived(meetingData.audioURL);
 
   // Update name when metadata changes
@@ -80,6 +81,7 @@
     await meetingData.getTranscript();
     await meetingData.getTranscriptJson();
     await meetingData.getSummary();
+    await meetingData.getChunkSummaries();
   }
 
   async function handleSummarizationStarted(summaryMeetingId: string) {
@@ -91,6 +93,7 @@
     try {
       await meetingData.regenerateSummary();
       await meetingData.getMeetingMetadata();
+      await meetingData.getChunkSummaries();
       isSummarizing = null;
       progressTracking.resetSummarizationProgress();
     } catch (error) {
@@ -104,6 +107,7 @@
     try {
       await meetingData.regenerateFinalSummary();
       await meetingData.getMeetingMetadata();
+      await meetingData.getChunkSummaries();
       isSummarizing = null;
       progressTracking.resetSummarizationProgress();
     } catch (error) {
@@ -162,6 +166,7 @@
     }
     if (!isSummarizing) {
       await meetingData.getSummary();
+      await meetingData.getChunkSummaries();
     }
 
     await meetingData.getAudio();
@@ -215,6 +220,7 @@
     <SummarySection
       {summaryContent}
       {markdownContent}
+      {chunkSummaries}
       {isSummarizing}
       {meetingId}
       summarizationProgress={progressTracking.summarizationProgress}

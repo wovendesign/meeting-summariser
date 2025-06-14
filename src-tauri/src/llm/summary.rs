@@ -1,20 +1,20 @@
-use std::time::Instant;
 use schemars::schema_for;
 use serde_json::json;
-use tauri::{AppHandle, Manager, Emitter};
+use std::time::Instant;
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
 
-use crate::{get_meeting_transcript, AppState};
 use crate::llm::{
     config::LlmConfig,
     error::{LlmError, LlmResult},
     file_manager::FileManager,
-    models::{FirstSummaryFormat, FinalSummaryFormat, KeyFact, MeetingToMarkdown},
+    models::{FinalSummaryFormat, FirstSummaryFormat, KeyFact, MeetingToMarkdown},
     progress::ProgressTracker,
     prompts::{Language, PromptManager},
     service::LlmService,
     text_processing::split_text_into_chunks,
 };
+use crate::{get_meeting_transcript, AppState};
 
 pub struct SummaryGenerator {
     app_handle: AppHandle,
@@ -44,20 +44,28 @@ impl SummaryGenerator {
             .map_err(|e| LlmError::FileError(format!("Failed to get transcript: {}", e)))?;
 
         if transcript.is_empty() {
-            return Err(LlmError::FileError("No transcript to summarize".to_string()));
+            return Err(LlmError::FileError(
+                "No transcript to summarize".to_string(),
+            ));
         }
 
         let content = if transcript.len() > 10_000 {
-            self.summarize_long_transcript(&transcript, meeting_id).await?
+            self.summarize_long_transcript(&transcript, meeting_id)
+                .await?
         } else {
-            return Err(LlmError::ConfigError("Direct summarization not implemented yet".to_string()));
+            return Err(LlmError::ConfigError(
+                "Direct summarization not implemented yet".to_string(),
+            ));
         };
 
         // Save the summary
-        self.file_manager.save_final_summary(meeting_id, &content).await
+        self.file_manager
+            .save_final_summary(meeting_id, &content)
+            .await
             .map_err(|e| LlmError::FileError(e))?;
 
-        self.file_manager.save_meeting_metadata(meeting_id, content.title.to_string())
+        self.file_manager
+            .save_meeting_metadata(meeting_id, content.title.to_string())
             .map_err(|e| LlmError::FileError(e))?;
 
         let total_duration = summary_start_time.elapsed();
@@ -89,7 +97,10 @@ impl SummaryGenerator {
         self.check_and_set_summarization_state(meeting_id).await?;
 
         // Read existing chunk summaries from disk
-        let chunk_summaries = self.file_manager.read_chunk_summaries(meeting_id).await
+        let chunk_summaries = self
+            .file_manager
+            .read_chunk_summaries(meeting_id)
+            .await
             .map_err(|e| LlmError::FileError(format!("Failed to read chunk summaries: {}", e)))?;
 
         println!("📦 Found {} saved chunk summaries", chunk_summaries.len());
@@ -100,16 +111,22 @@ impl SummaryGenerator {
 
         // Generate final summary from existing chunk summaries
         let mut progress_tracker = ProgressTracker::new(self.app_handle.clone(), 1);
-        progress_tracker.start_summarization(meeting_id)
+        progress_tracker
+            .start_summarization(meeting_id)
             .map_err(|e| LlmError::NetworkError(e))?;
 
-        let content = self.generate_final_summary(chunk_summaries, &llm_service, &mut progress_tracker).await?;
+        let content = self
+            .generate_final_summary(chunk_summaries, &llm_service, &mut progress_tracker)
+            .await?;
 
         // Save the regenerated summary
-        self.file_manager.save_final_summary(meeting_id, &content).await
+        self.file_manager
+            .save_final_summary(meeting_id, &content)
+            .await
             .map_err(|e| LlmError::FileError(e))?;
 
-        self.file_manager.save_meeting_metadata(meeting_id, content.title.to_string())
+        self.file_manager
+            .save_meeting_metadata(meeting_id, content.title.to_string())
             .map_err(|e| LlmError::FileError(e))?;
 
         // Reset summarization state
@@ -144,19 +161,27 @@ impl SummaryGenerator {
         let mut state = state.lock().await;
 
         if state.currently_summarizing.is_some() {
-            return Err(LlmError::ConfigError("Another summarization is running".to_string()));
+            return Err(LlmError::ConfigError(
+                "Another summarization is running".to_string(),
+            ));
         }
 
         state.currently_summarizing = Some(meeting_id.to_string());
-        
+
         self.app_handle
             .emit("summarization-started", meeting_id)
-            .map_err(|e| LlmError::NetworkError(format!("Failed to emit summarization-started: {}", e)))?;
+            .map_err(|e| {
+                LlmError::NetworkError(format!("Failed to emit summarization-started: {}", e))
+            })?;
 
         Ok(())
     }
 
-    async fn summarize_long_transcript(&self, transcript: &str, meeting_id: &str) -> LlmResult<FinalSummaryFormat> {
+    async fn summarize_long_transcript(
+        &self,
+        transcript: &str,
+        meeting_id: &str,
+    ) -> LlmResult<FinalSummaryFormat> {
         self.app_handle
             .emit(
                 "llm-progress",
@@ -173,7 +198,8 @@ impl SummaryGenerator {
         println!("📦 Split transcript into {} chunks", chunks.len());
 
         // Summarize chunks and combine
-        self.summarize_chunks(chunks, meeting_id, &llm_service).await
+        self.summarize_chunks(chunks, meeting_id, &llm_service)
+            .await
     }
 
     async fn get_llm_config(&self) -> LlmResult<LlmConfig> {
@@ -199,21 +225,22 @@ impl SummaryGenerator {
 
         let total_steps = chunks.len() + 1;
         let mut progress_tracker = ProgressTracker::new(self.app_handle.clone(), total_steps);
-        progress_tracker.start_summarization(meeting_id)
+        progress_tracker
+            .start_summarization(meeting_id)
             .map_err(|e| LlmError::NetworkError(e))?;
 
         // Process each chunk
         for (i, chunk) in chunks.iter().enumerate() {
             let chunk_start_time = Instant::now();
-            
-            progress_tracker.update_progress(&format!(
-                "Summarizing chunk {} of {}",
-                i + 1,
-                chunks.len()
-            )).map_err(|e| LlmError::NetworkError(e))?;
 
-            let chunk_summary = self.process_chunk(chunk, &key_facts, llm_service, &progress_tracker).await?;
-            
+            progress_tracker
+                .update_progress(&format!("Summarizing chunk {} of {}", i + 1, chunks.len()))
+                .map_err(|e| LlmError::NetworkError(e))?;
+
+            let chunk_summary = self
+                .process_chunk(chunk, &key_facts, llm_service, &progress_tracker)
+                .await?;
+
             let chunk_duration = chunk_start_time.elapsed();
             chunk_times.push(chunk_duration);
             progress_tracker.log_chunk_completed(i, chunk_duration);
@@ -222,20 +249,26 @@ impl SummaryGenerator {
             self.update_key_facts(&mut key_facts, &chunk_summary);
 
             // Save chunk and summary
-            self.file_manager.save_chunk(meeting_id, i, chunk).await
+            self.file_manager
+                .save_chunk(meeting_id, i, chunk)
+                .await
                 .map_err(|e| LlmError::FileError(e))?;
-            
-            let chunk_summary_json = serde_json::to_string_pretty(&chunk_summary)
-                .map_err(|e| LlmError::SerializationError(format!("Failed to serialize chunk summary: {}", e)))?;
-            
-            self.file_manager.save_chunk_summary(meeting_id, i, &chunk_summary_json).await
+
+            let chunk_summary_json = serde_json::to_string_pretty(&chunk_summary).map_err(|e| {
+                LlmError::SerializationError(format!("Failed to serialize chunk summary: {}", e))
+            })?;
+
+            self.file_manager
+                .save_chunk_summary(meeting_id, i, &chunk_summary_json)
+                .await
                 .map_err(|e| LlmError::FileError(e))?;
 
             chunk_summaries.push(chunk_summary);
         }
 
         // Log timing statistics
-        progress_tracker.log_timing_stats(&chunk_times)
+        progress_tracker
+            .log_timing_stats(&chunk_times)
             .map_err(|e| LlmError::NetworkError(e))?;
 
         // Save all chunk summaries
@@ -243,12 +276,15 @@ impl SummaryGenerator {
             .iter()
             .map(|s| serde_json::to_string_pretty(s).unwrap_or_default())
             .collect();
-        
-        self.file_manager.save_all_chunk_summaries(meeting_id, &summary_strings).await
+
+        self.file_manager
+            .save_all_chunk_summaries(meeting_id, &summary_strings)
+            .await
             .map_err(|e| LlmError::FileError(e))?;
 
         // Generate final summary
-        self.generate_final_summary(chunk_summaries, llm_service, &mut progress_tracker).await
+        self.generate_final_summary(chunk_summaries, llm_service, &mut progress_tracker)
+            .await
     }
 
     async fn process_chunk(
@@ -258,7 +294,8 @@ impl SummaryGenerator {
         llm_service: &LlmService,
         progress_tracker: &ProgressTracker,
     ) -> LlmResult<FirstSummaryFormat> {
-        let chunk_system_prompt = PromptManager::chunk_summarization(&self.language, Some(key_facts));
+        let chunk_system_prompt =
+            PromptManager::chunk_summarization(&self.language, Some(key_facts));
 
         let chunk_summary_json = llm_service
             .generate_text(
@@ -313,7 +350,8 @@ impl SummaryGenerator {
     ) -> LlmResult<FinalSummaryFormat> {
         let final_summary_start_time = Instant::now();
 
-        progress_tracker.update_progress("Combining chunk summaries into final summary...")
+        progress_tracker
+            .update_progress("Combining chunk summaries into final summary...")
             .map_err(|e| LlmError::NetworkError(e))?;
 
         let final_system_prompt = PromptManager::final_summary(&self.language);
@@ -328,8 +366,10 @@ impl SummaryGenerator {
             )
             .await?;
 
-        let final_summary: FinalSummaryFormat = serde_json::from_str(&final_string)
-            .map_err(|e| LlmError::ParseError(format!("Failed to parse final summary JSON: {}", e)))?;
+        let final_summary: FinalSummaryFormat =
+            serde_json::from_str(&final_string).map_err(|e| {
+                LlmError::ParseError(format!("Failed to parse final summary JSON: {}", e))
+            })?;
 
         let final_summary_duration = final_summary_start_time.elapsed();
         println!(
@@ -340,7 +380,10 @@ impl SummaryGenerator {
         Ok(final_summary)
     }
 
-    fn combine_structured_first_summaries(&self, summaries: Vec<FirstSummaryFormat>) -> FirstSummaryFormat {
+    fn combine_structured_first_summaries(
+        &self,
+        summaries: Vec<FirstSummaryFormat>,
+    ) -> FirstSummaryFormat {
         let mut combined = FirstSummaryFormat {
             key_facts: KeyFact {
                 responisible_for_moderation: None,
@@ -410,7 +453,10 @@ impl SummaryGenerator {
 #[tauri::command]
 pub async fn generate_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
     let generator = SummaryGenerator::new(app, Language::default());
-    generator.generate_summary(meeting_id).await.map_err(|e| e.to_string())
+    generator
+        .generate_summary(meeting_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -423,14 +469,20 @@ pub async fn is_summarizing(app: AppHandle) -> Result<Option<String>, String> {
 #[tauri::command]
 pub async fn get_meeting_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
     let file_manager = FileManager::new(app);
-    let summary = file_manager.read_summary(meeting_id).await.map_err(|e| e.to_string())?;
+    let summary = file_manager
+        .read_summary(meeting_id)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(summary.to_markdown())
 }
 
 #[tauri::command]
 pub async fn regenerate_final_summary(app: AppHandle, meeting_id: &str) -> Result<String, String> {
     let generator = SummaryGenerator::new(app, Language::default());
-    generator.regenerate_final_summary(meeting_id).await.map_err(|e| e.to_string())
+    generator
+        .regenerate_final_summary(meeting_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -449,12 +501,15 @@ pub async fn test_llm_connection(app: AppHandle) -> Result<String, String> {
     let llm_service = LlmService::new(config.external_endpoint, config.external_model);
     let progress_tracker = ProgressTracker::new(app.clone(), 1);
 
-    progress_tracker.emit_api_status("Starting LLM connection test...")
+    progress_tracker
+        .emit_api_status("Starting LLM connection test...")
         .map_err(|e| format!("Failed to emit progress: {}", e))?;
 
     // Reset progress indicators
-    app.emit("llm-download-progress", 0).map_err(|e| e.to_string())?;
-    app.emit("llm-loading-progress", 0).map_err(|e| e.to_string())?;
+    app.emit("llm-download-progress", 0)
+        .map_err(|e| e.to_string())?;
+    app.emit("llm-loading-progress", 0)
+        .map_err(|e| e.to_string())?;
 
     match llm_service
         .generate_text(
@@ -466,12 +521,14 @@ pub async fn test_llm_connection(app: AppHandle) -> Result<String, String> {
         .await
     {
         Ok(response) => {
-            progress_tracker.emit_api_status("LLM test completed successfully!")
+            progress_tracker
+                .emit_api_status("LLM test completed successfully!")
                 .map_err(|e| format!("Failed to emit progress: {}", e))?;
             Ok(format!("Test successful! Response: {}", response.trim()))
         }
         Err(e) => {
-            progress_tracker.emit_api_status(&format!("LLM test failed: {}", e))
+            progress_tracker
+                .emit_api_status(&format!("LLM test failed: {}", e))
                 .map_err(|e| format!("Failed to emit progress: {}", e))?;
             Err(format!("Test failed: {}", e))
         }

@@ -1,8 +1,8 @@
+use crate::llm::models::{FinalSummaryFormat, MeetingToMarkdown};
+use crate::MeetingMetadata;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
-use crate::MeetingMetadata;
-use crate::llm::models::{FinalSummaryFormat, MeetingToMarkdown};
 
 pub struct FileManager {
     app_handle: AppHandle,
@@ -33,29 +33,43 @@ impl FileManager {
             .map_err(|e| format!("Failed to create chunks directory: {}", e))
     }
 
-    pub async fn save_chunk(&self, meeting_id: &str, chunk_index: usize, content: &str) -> Result<(), String> {
+    pub async fn save_chunk(
+        &self,
+        meeting_id: &str,
+        chunk_index: usize,
+        content: &str,
+    ) -> Result<(), String> {
         self.ensure_chunks_dir_exists(meeting_id).await?;
         let chunks_dir = self.get_chunks_dir(meeting_id)?;
         let chunk_file = chunks_dir.join(format!("chunk_{:03}.txt", chunk_index + 1));
-        
+
         fs::write(&chunk_file, content)
             .await
             .map_err(|e| format!("Failed to save chunk {}: {}", chunk_index + 1, e))
     }
 
-    pub async fn save_chunk_summary(&self, meeting_id: &str, chunk_index: usize, summary: &str) -> Result<(), String> {
+    pub async fn save_chunk_summary(
+        &self,
+        meeting_id: &str,
+        chunk_index: usize,
+        summary: &str,
+    ) -> Result<(), String> {
         let chunks_dir = self.get_chunks_dir(meeting_id)?;
         let summary_file = chunks_dir.join(format!("chunk_{:03}_summary.json", chunk_index + 1));
-        
+
         fs::write(&summary_file, summary)
             .await
             .map_err(|e| format!("Failed to save chunk summary {}: {}", chunk_index + 1, e))
     }
 
-    pub async fn save_all_chunk_summaries(&self, meeting_id: &str, summaries: &[String]) -> Result<(), String> {
+    pub async fn save_all_chunk_summaries(
+        &self,
+        meeting_id: &str,
+        summaries: &[String],
+    ) -> Result<(), String> {
         let chunks_dir = self.get_chunks_dir(meeting_id)?;
         let all_chunks_summary_file = chunks_dir.join("all_chunk_summaries.md");
-        
+
         let all_summaries_content = summaries
             .iter()
             .enumerate()
@@ -68,7 +82,11 @@ impl FileManager {
             .map_err(|e| format!("Failed to save all chunk summaries: {}", e))
     }
 
-    pub async fn save_final_summary(&self, meeting_id: &str, content: &FinalSummaryFormat) -> Result<(), String> {
+    pub async fn save_final_summary(
+        &self,
+        meeting_id: &str,
+        content: &FinalSummaryFormat,
+    ) -> Result<(), String> {
         let meeting_dir = self.get_meeting_dir(meeting_id)?;
         let summary_path = meeting_dir.join("summary.md");
         let summary_json_path = meeting_dir.join("summary.json");
@@ -100,9 +118,12 @@ impl FileManager {
     }
 
     /// Read all saved chunk summaries from disk
-    pub async fn read_chunk_summaries(&self, meeting_id: &str) -> Result<Vec<crate::llm::models::FirstSummaryFormat>, String> {
+    pub async fn read_chunk_summaries(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Vec<crate::llm::models::FirstSummaryFormat>, String> {
         let chunks_dir = self.get_chunks_dir(meeting_id)?;
-        
+
         // Check if chunks directory exists
         if !chunks_dir.exists() {
             return Err("No chunk summaries found - chunks directory doesn't exist".to_string());
@@ -114,7 +135,7 @@ impl FileManager {
         // Read chunk summaries in order
         loop {
             let summary_file = chunks_dir.join(format!("chunk_{:03}_summary.json", chunk_index));
-            
+
             if !summary_file.exists() {
                 break;
             }
@@ -123,8 +144,10 @@ impl FileManager {
                 .await
                 .map_err(|e| format!("Failed to read chunk summary {}: {}", chunk_index, e))?;
 
-            let chunk_summary: crate::llm::models::FirstSummaryFormat = serde_json::from_str(&summary_json)
-                .map_err(|e| format!("Failed to parse chunk summary {} JSON: {}", chunk_index, e))?;
+            let chunk_summary: crate::llm::models::FirstSummaryFormat =
+                serde_json::from_str(&summary_json).map_err(|e| {
+                    format!("Failed to parse chunk summary {} JSON: {}", chunk_index, e)
+                })?;
 
             chunk_summaries.push(chunk_summary);
             chunk_index += 1;
@@ -146,10 +169,18 @@ impl FileManager {
             if let Ok(existing_metadata) = serde_json::from_str::<MeetingMetadata>(&content) {
                 existing_metadata.created_at
             } else {
-                Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
+                Some(
+                    chrono::Utc::now()
+                        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                        .to_string(),
+                )
             }
         } else {
-            Some(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
+            Some(
+                chrono::Utc::now()
+                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string(),
+            )
         };
 
         let metadata = MeetingMetadata {

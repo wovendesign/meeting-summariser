@@ -2,10 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { readFile, BaseDirectory } from "@tauri-apps/plugin-fs";
 import { toast } from "svelte-sonner";
 
+interface ChunkSummary {
+  chunk_number: number;
+  content: string;
+  markdown_content: string;
+}
+
 export function useMeetingData(meetingId: string) {
   let transcriptContent = $state("");
   let transcriptJsonContent: string | null = $state(null);
   let summaryContent: string | null = $state("");
+  let chunkSummaries: ChunkSummary[] = $state([]);
   let audio: Uint8Array | null = $state(null);
   let meetingMetadata: { name?: string } = $state({});
 
@@ -43,6 +50,17 @@ export function useMeetingData(meetingId: string) {
     } catch (error) {
       console.error("Error fetching summary:", error);
       summaryContent = null;
+      throw error;
+    }
+  }
+
+  async function getChunkSummaries() {
+    try {
+      chunkSummaries = await invoke("get_chunk_summaries", { meetingId });
+      return chunkSummaries;
+    } catch (error) {
+      console.error("Error fetching chunk summaries:", error);
+      chunkSummaries = [];
       throw error;
     }
   }
@@ -102,6 +120,7 @@ export function useMeetingData(meetingId: string) {
       await getTranscript();
       await getTranscriptJson();
       await getSummary();
+      await getChunkSummaries();
     } catch (error) {
       console.error("Error starting transcription:", error);
       toast.error("Error starting transcription: " + error);
@@ -115,6 +134,7 @@ export function useMeetingData(meetingId: string) {
     set transcriptContent(value: string) { transcriptContent = value; },
     get transcriptJsonContent() { return transcriptJsonContent; },
     get summaryContent() { return summaryContent; },
+    get chunkSummaries() { return chunkSummaries; },
     get audio() { return audio; },
     get audioURL() { return audioURL; },
     get meetingMetadata() { return meetingMetadata; },
@@ -123,6 +143,7 @@ export function useMeetingData(meetingId: string) {
     getTranscript,
     getTranscriptJson,
     getSummary,
+    getChunkSummaries,
     getAudio,
     getMeetingMetadata,
     regenerateSummary,

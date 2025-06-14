@@ -241,6 +241,119 @@ async fn rename_meeting(app: AppHandle, meeting_id: &str, new_name: &str) -> Res
     Ok(())
 }
 
+#[derive(Serialize, Deserialize)]
+struct ChunkSummary {
+    chunk_number: usize,
+    content: String,
+    markdown_content: String,
+}
+
+#[tauri::command]
+async fn get_chunk_summaries(
+    app: AppHandle,
+    meeting_id: &str,
+) -> Result<Vec<ChunkSummary>, String> {
+    let app_dir = app
+        .path()
+        .app_local_data_dir()
+        .expect("Failed to get app local data directory");
+    let chunks_dir = app_dir.join("uploads").join(meeting_id).join("chunks");
+
+    // Check if chunks directory exists
+    if !chunks_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut chunk_summaries = Vec::new();
+    let mut chunk_number = 1;
+
+    loop {
+        let summary_file = chunks_dir.join(format!("chunk_{:03}_summary.json", chunk_number));
+        if !summary_file.exists() {
+            break;
+        }
+
+        match fs::read_to_string(&summary_file).await {
+            Ok(content) => {
+                // Convert the raw JSON to markdown for display
+                let markdown_content =
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
+                        format_chunk_summary_as_markdown(&parsed)
+                    } else {
+                        content.clone()
+                    };
+
+                chunk_summaries.push(ChunkSummary {
+                    chunk_number,
+                    content: content.clone(),
+                    markdown_content,
+                });
+            }
+            Err(_) => break,
+        }
+
+        chunk_number += 1;
+    }
+
+    Ok(chunk_summaries)
+}
+
+fn format_chunk_summary_as_markdown(summary: &serde_json::Value) -> String {
+    let mut markdown = String::new();
+
+    if let Some(topics) = summary.get("topics").and_then(|t| t.as_array()) {
+        for topic in topics {
+            if let Some(title) = topic.get("title").and_then(|t| t.as_str()) {
+                markdown.push_str(&format!("### {}\n\n", title));
+
+                if let Some(bullet_points) = topic.get("bullet_points").and_then(|bp| bp.as_array())
+                {
+                    for bullet in bullet_points {
+                        if let Some(bullet_str) = bullet.as_str() {
+                            markdown.push_str(&format!("- {}\n", bullet_str));
+                        }
+                    }
+                    markdown.push('\n');
+                }
+            }
+        }
+    }
+
+    if let Some(todos) = summary.get("todos").and_then(|t| t.as_array()) {
+        if !todos.is_empty() {
+            markdown.push_str("### Action Items\n\n");
+            for todo in todos {
+                if let Some(task) = todo.get("task").and_then(|t| t.as_str()) {
+                    if let Some(assignees) = todo.get("assignees").and_then(|a| a.as_array()) {
+                        let assignee_names: Vec<String> = assignees
+                            .iter()
+                            .filter_map(|a| a.as_str())
+                            .map(|s| s.to_string())
+                            .collect();
+                        if !assignee_names.is_empty() {
+                            markdown.push_str(&format!(
+                                "- **[{}]**: {}\n",
+                                assignee_names.join(", "),
+                                task
+                            ));
+                        } else {
+                            markdown.push_str(&format!("- {}\n", task));
+                        }
+                    } else {
+                        markdown.push_str(&format!("- {}\n", task));
+                    }
+                }
+            }
+        }
+    }
+
+    if markdown.is_empty() {
+        "No summary content available".to_string()
+    } else {
+        markdown
+    }
+}
+
 // Helper function to get fallback date from file creation time or meeting_id
 async fn get_fallback_date(metadata_path: &Path, meeting_id: &str) -> Option<String> {
     // Try to get file creation time from the parent directory (meeting directory)
@@ -280,6 +393,7 @@ pub fn run() {
             get_meeting_audio,
             get_meeting_transcript_json,
             get_meeting_metadata,
+            get_chunk_summaries,
             llm::get_meeting_summary,
             llm::generate_summary,
             llm::regenerate_final_summary,

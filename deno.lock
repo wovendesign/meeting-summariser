@@ -15,7 +15,7 @@
     "npm:@tauri-apps/plugin-fs@2.3": "2.3.0",
     "npm:@tauri-apps/plugin-http@~2.4.4": "2.4.4",
     "npm:@tauri-apps/plugin-opener@~2.2.7": "2.2.7",
-    "npm:bits-ui@^2.2.0": "2.2.0_@internationalized+date@3.8.1_svelte@5.33.3__acorn@8.14.1",
+    "npm:bits-ui@^2.7.0": "2.7.0_@internationalized+date@3.8.1_svelte@5.33.3__acorn@8.14.1",
     "npm:clsx@^2.1.1": "2.1.1",
     "npm:marked@^15.0.12": "15.0.12",
     "npm:mode-watcher@^1.0.8": "1.0.8_svelte@5.33.3__acorn@8.14.1",
@@ -137,14 +137,14 @@
     "@esbuild/win32-x64@0.25.5": {
       "integrity": "sha512-TXv6YnJ8ZMVdX+SXWVBo/0p8LTcrUYngpWjvm91TMjjBQii7Oz11Lw5lbDV5Y0TzuhSJHwiH4hEtC1I42mMS0g=="
     },
-    "@floating-ui/core@1.7.0": {
-      "integrity": "sha512-FRdBLykrPPA6P76GGGqlex/e7fbe0F1ykgxHYNXQsH/iTEtjMj/f9bpY5oQqbjt5VgZvgz/uKXbGuROijh3VLA==",
+    "@floating-ui/core@1.7.1": {
+      "integrity": "sha512-azI0DrjMMfIug/ExbBaeDVJXcY0a7EPvPjb2xAJPa4HeimBX+Z18HK8QQR3jb6356SnDDdxx+hinMLcJEDdOjw==",
       "dependencies": [
         "@floating-ui/utils"
       ]
     },
-    "@floating-ui/dom@1.7.0": {
-      "integrity": "sha512-lGTor4VlXcesUMh1cupTUTDoCxMb0V6bm3CnxHzQcw8Eaf1jQbgQX4i02fYgT0vJ82tb5MZ4CZk1LRGkktJCzg==",
+    "@floating-ui/dom@1.7.1": {
+      "integrity": "sha512-cwsmW/zyw5ltYTUeeYJ60CnQuPqmGwuGVhG9w0PRaRKkAyi38BT5CKrpIbb+jtahSwUl04cWzSx9ZOIxeS6RsQ==",
       "dependencies": [
         "@floating-ui/core",
         "@floating-ui/utils"
@@ -548,8 +548,8 @@
     "axobject-query@4.1.0": {
       "integrity": "sha512-qIj0G9wZbMGNLjLmg1PT6v2mE9AH2zlnADJD/2tC6E00hgmhUOfEB6greHPAfLRSufHqROIUTkw6E+M3lH0PTQ=="
     },
-    "bits-ui@2.2.0_@internationalized+date@3.8.1_svelte@5.33.3__acorn@8.14.1": {
-      "integrity": "sha512-Jo3PIWpMMAeT4rs5f3X3S5Qdu1MWyjz3YV5DhTJRtLI3UZn8A5YkZyHbIaPsAkKIxjLMNAqAa2FAMfDJ8DdXjw==",
+    "bits-ui@2.7.0_@internationalized+date@3.8.1_svelte@5.33.3__acorn@8.14.1": {
+      "integrity": "sha512-2kjVSVBDt9SFnjFiA9vD74T5+UtAKWYpfOil9d4+7v0fSawvTNcMgOP05cD3FTJT/rarj78DjhaXdyTWIW6I/g==",
       "dependencies": [
         "@floating-ui/core",
         "@floating-ui/dom",
@@ -1221,7 +1221,7 @@
         "npm:@tauri-apps/plugin-fs@2.3",
         "npm:@tauri-apps/plugin-http@~2.4.4",
         "npm:@tauri-apps/plugin-opener@~2.2.7",
-        "npm:bits-ui@^2.2.0",
+        "npm:bits-ui@^2.7.0",
         "npm:clsx@^2.1.1",
         "npm:marked@^15.0.12",
         "npm:mode-watcher@^1.0.8",
